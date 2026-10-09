@@ -74,29 +74,29 @@ my-data-project/
 │
 ├── raw/                          # raw inputs: git-ignored, never written by a recipe
 │   ├── .gitkeep                  # keeps the folder in git
-│   └── daily.csv
+│   └── pwt110_bra_deu_esp_usa.csv
 │
 ├── recipes/                      # written by humans, with or without AI tools
-│   ├── monthly_stats/            # one folder = one recipe
+│   ├── pwt_panel/                # one folder = one recipe
 │   │   ├── recipe.toml           # description, inputs, outputs
-│   │   ├── 01_add_returns.py     # one file = one step; top comment is its description
-│   │   ├── 02_monthly_aggregate.py
-│   │   └── 03_rolling_average.py
+│   │   ├── 01_reshape_long.py    # one file = one step; top comment is its description
+│   │   ├── 02_keep_core_variables.py
+│   │   └── 03_pivot_to_panel.py
 │   │
-│   └── volatility_flags/         # a second recipe, taking a view as its input
-│       ├── recipe.toml           # inputs = ["useful-views/monthly-stats.parquet"]
-│       └── 01_flag_months.py     # smallest valid recipe: one step file
+│   └── gdp_per_capita/           # a second recipe, taking a view as its input
+│       ├── recipe.toml           # inputs = ["useful-views/pwt-panel.parquet"]
+│       └── 01_derive_measures.py # smallest valid recipe: one step file
 │
 ├── work/                         # intermediates, never recorded, git-ignored
-│   ├── monthly_stats/            # one scratch folder per recipe, emptied before each run
-│   │   ├── daily_with_returns.parquet
-│   │   └── monthly.parquet
-│   └── volatility_flags/
+│   ├── pwt_panel/                # one scratch folder per recipe, emptied before each run
+│   │   ├── long.parquet
+│   │   └── core.parquet
+│   └── gdp_per_capita/
 │
 └── useful-views/                 # declared outputs only, flat
     ├── README.md                 # generated: catalog of the views and how each was made
-    ├── monthly-stats.parquet     # produced by recipes/monthly_stats
-    └── volatility-flags.parquet  # produced by recipes/volatility_flags
+    ├── pwt-panel.parquet         # produced by recipes/pwt_panel
+    └── gdp-per-capita.parquet    # produced by recipes/gdp_per_capita
 ```
 
 The generated `.gitignore` is exactly:
@@ -116,23 +116,27 @@ section 6, so a new student or an AI tool can write a compliant recipe from it.
 
 `reference/recipes/` holds two canonical examples.
 
-`recipes/monthly_stats/recipe.toml`:
+`recipes/pwt_panel/recipe.toml`:
 
 ```toml
-description = "Monthly high, SD and 3-month rolling average from daily prices."
-inputs  = ["raw/daily.csv"]
-outputs = ["useful-views/monthly-stats.parquet"]
+description = "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States."
+inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
+outputs = ["useful-views/pwt-panel.parquet"]
 ```
 
-`recipes/monthly_stats/01_add_returns.py`:
+`recipes/pwt_panel/01_reshape_long.py`:
 
 ```python
-# Compute daily simple returns from Close so volatility is scale-free.
+# Reshape the wide export (one column per year) into one row per country, variable and year.
 import polars as pl
 
-df = pl.read_csv("raw/daily.csv", try_parse_dates=True).sort("Date")
-df = df.with_columns(ret=pl.col("Close").pct_change())
-df.write_parquet("work/monthly_stats/daily_with_returns.parquet")
+wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")
+long = wide.unpivot(
+    index=["ISO code", "Country", "Variable code", "Variable name"],
+    variable_name="year",
+    value_name="value",
+).with_columns(pl.col("year").cast(pl.Int32))
+long.write_parquet("work/pwt_panel/long.parquet")
 ```
 
 Format:
@@ -322,11 +326,13 @@ build them:
   from an empty folder, once in Python as a notebook user would do it, once
   on the command line.
 - `reference/` is test data and the target output. Do not modify it.
+  `reference/README.md` is that example project's own human-written README.
+  It carries the data credit and is not compared with anything `init` writes.
 
 ## 14. Done means
 
 - A test builds the reference project from an empty folder using only the
-  public functions, `reference/raw/daily.csv` and the files in
+  public functions, the file in `reference/raw/` and the files in
   `reference/recipes/`. Each resulting view has the same values as its
   counterpart in `reference/useful-views/` (compare values, not bytes).
   `datapackage.json` and `useful-views/README.md` equal the reference files,
@@ -352,8 +358,11 @@ build them:
 
 ## 16. About the reference folder
 
-`reference/raw/daily.csv` is synthetic sample data. The two recipe folders
-are the intended authoring format. `datapackage.json`, the two views and
+`reference/raw/pwt110_bra_deu_esp_usa.csv` is an extract of the Penn World
+Table 11.0, licensed CC BY 4.0; `reference/README.md` records its source and
+the required citation, and must stay with the data. The raw file begins with
+a byte-order mark, which Frictionless records as the encoding `utf-8-sig`.
+The two recipe folders are the intended authoring format. `datapackage.json`, the two views and
 `useful-views/README.md` were produced by a throwaway script that acted out
 rules 9 to 13 on those recipes, to confirm the numbers, that a second run
 changes nothing, and that the result validates. No package code exists yet.

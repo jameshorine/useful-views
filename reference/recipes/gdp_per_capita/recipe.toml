@@ -1,0 +1,3 @@
+description = "GDP per capita, its annual growth, and its level relative to the United States."
+inputs  = ["useful-views/pwt-panel.parquet"]
+outputs = ["useful-views/gdp-per-capita.parquet"]

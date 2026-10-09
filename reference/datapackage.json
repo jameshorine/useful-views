@@ -1,0 +1,482 @@
+{
+  "name": "reference",
+  "resources": [
+    {
+      "name": "pwt110_bra_deu_esp_usa",
+      "type": "table",
+      "path": "raw/pwt110_bra_deu_esp_usa.csv",
+      "scheme": "file",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "encoding": "utf-8-sig",
+      "schema": {
+        "fields": [
+          {
+            "name": "ISO code",
+            "type": "string"
+          },
+          {
+            "name": "Country",
+            "type": "string"
+          },
+          {
+            "name": "Variable code",
+            "type": "string"
+          },
+          {
+            "name": "Variable name",
+            "type": "string"
+          },
+          {
+            "name": "1950",
+            "type": "number"
+          },
+          {
+            "name": "1951",
+            "type": "number"
+          },
+          {
+            "name": "1952",
+            "type": "number"
+          },
+          {
+            "name": "1953",
+            "type": "number"
+          },
+          {
+            "name": "1954",
+            "type": "number"
+          },
+          {
+            "name": "1955",
+            "type": "number"
+          },
+          {
+            "name": "1956",
+            "type": "number"
+          },
+          {
+            "name": "1957",
+            "type": "number"
+          },
+          {
+            "name": "1958",
+            "type": "number"
+          },
+          {
+            "name": "1959",
+            "type": "number"
+          },
+          {
+            "name": "1960",
+            "type": "number"
+          },
+          {
+            "name": "1961",
+            "type": "number"
+          },
+          {
+            "name": "1962",
+            "type": "number"
+          },
+          {
+            "name": "1963",
+            "type": "number"
+          },
+          {
+            "name": "1964",
+            "type": "number"
+          },
+          {
+            "name": "1965",
+            "type": "number"
+          },
+          {
+            "name": "1966",
+            "type": "number"
+          },
+          {
+            "name": "1967",
+            "type": "number"
+          },
+          {
+            "name": "1968",
+            "type": "number"
+          },
+          {
+            "name": "1969",
+            "type": "number"
+          },
+          {
+            "name": "1970",
+            "type": "number"
+          },
+          {
+            "name": "1971",
+            "type": "number"
+          },
+          {
+            "name": "1972",
+            "type": "number"
+          },
+          {
+            "name": "1973",
+            "type": "number"
+          },
+          {
+            "name": "1974",
+            "type": "number"
+          },
+          {
+            "name": "1975",
+            "type": "number"
+          },
+          {
+            "name": "1976",
+            "type": "number"
+          },
+          {
+            "name": "1977",
+            "type": "number"
+          },
+          {
+            "name": "1978",
+            "type": "number"
+          },
+          {
+            "name": "1979",
+            "type": "number"
+          },
+          {
+            "name": "1980",
+            "type": "number"
+          },
+          {
+            "name": "1981",
+            "type": "number"
+          },
+          {
+            "name": "1982",
+            "type": "number"
+          },
+          {
+            "name": "1983",
+            "type": "number"
+          },
+          {
+            "name": "1984",
+            "type": "number"
+          },
+          {
+            "name": "1985",
+            "type": "number"
+          },
+          {
+            "name": "1986",
+            "type": "number"
+          },
+          {
+            "name": "1987",
+            "type": "number"
+          },
+          {
+            "name": "1988",
+            "type": "number"
+          },
+          {
+            "name": "1989",
+            "type": "number"
+          },
+          {
+            "name": "1990",
+            "type": "number"
+          },
+          {
+            "name": "1991",
+            "type": "number"
+          },
+          {
+            "name": "1992",
+            "type": "number"
+          },
+          {
+            "name": "1993",
+            "type": "number"
+          },
+          {
+            "name": "1994",
+            "type": "number"
+          },
+          {
+            "name": "1995",
+            "type": "number"
+          },
+          {
+            "name": "1996",
+            "type": "number"
+          },
+          {
+            "name": "1997",
+            "type": "number"
+          },
+          {
+            "name": "1998",
+            "type": "number"
+          },
+          {
+            "name": "1999",
+            "type": "number"
+          },
+          {
+            "name": "2000",
+            "type": "number"
+          },
+          {
+            "name": "2001",
+            "type": "number"
+          },
+          {
+            "name": "2002",
+            "type": "number"
+          },
+          {
+            "name": "2003",
+            "type": "number"
+          },
+          {
+            "name": "2004",
+            "type": "number"
+          },
+          {
+            "name": "2005",
+            "type": "number"
+          },
+          {
+            "name": "2006",
+            "type": "number"
+          },
+          {
+            "name": "2007",
+            "type": "number"
+          },
+          {
+            "name": "2008",
+            "type": "number"
+          },
+          {
+            "name": "2009",
+            "type": "number"
+          },
+          {
+            "name": "2010",
+            "type": "number"
+          },
+          {
+            "name": "2011",
+            "type": "number"
+          },
+          {
+            "name": "2012",
+            "type": "number"
+          },
+          {
+            "name": "2013",
+            "type": "number"
+          },
+          {
+            "name": "2014",
+            "type": "number"
+          },
+          {
+            "name": "2015",
+            "type": "number"
+          },
+          {
+            "name": "2016",
+            "type": "number"
+          },
+          {
+            "name": "2017",
+            "type": "number"
+          },
+          {
+            "name": "2018",
+            "type": "number"
+          },
+          {
+            "name": "2019",
+            "type": "number"
+          },
+          {
+            "name": "2020",
+            "type": "number"
+          },
+          {
+            "name": "2021",
+            "type": "number"
+          },
+          {
+            "name": "2022",
+            "type": "number"
+          },
+          {
+            "name": "2023",
+            "type": "number"
+          }
+        ]
+      }
+    },
+    {
+      "name": "gdp-per-capita",
+      "type": "table",
+      "path": "useful-views/gdp-per-capita.parquet",
+      "scheme": "file",
+      "format": "parquet",
+      "mediatype": "application/parquet",
+      "schema": {
+        "fields": [
+          {
+            "name": "iso",
+            "type": "string"
+          },
+          {
+            "name": "country",
+            "type": "string"
+          },
+          {
+            "name": "year",
+            "type": "integer"
+          },
+          {
+            "name": "gdp_per_capita",
+            "type": "integer"
+          },
+          {
+            "name": "growth_pct",
+            "type": "number"
+          },
+          {
+            "name": "relative_to_usa",
+            "type": "number"
+          }
+        ]
+      },
+      "producedBy": {
+        "recipe": "gdp_per_capita",
+        "inputs": [
+          "useful-views/pwt-panel.parquet"
+        ]
+      }
+    },
+    {
+      "name": "pwt-panel",
+      "type": "table",
+      "path": "useful-views/pwt-panel.parquet",
+      "scheme": "file",
+      "format": "parquet",
+      "mediatype": "application/parquet",
+      "schema": {
+        "fields": [
+          {
+            "name": "iso",
+            "type": "string"
+          },
+          {
+            "name": "country",
+            "type": "string"
+          },
+          {
+            "name": "year",
+            "type": "integer"
+          },
+          {
+            "name": "rgdpe",
+            "type": "number"
+          },
+          {
+            "name": "rgdpo",
+            "type": "number"
+          },
+          {
+            "name": "rgdpna",
+            "type": "number"
+          },
+          {
+            "name": "pop",
+            "type": "number"
+          },
+          {
+            "name": "emp",
+            "type": "number"
+          },
+          {
+            "name": "avh",
+            "type": "number"
+          },
+          {
+            "name": "hc",
+            "type": "number"
+          },
+          {
+            "name": "rtfpna",
+            "type": "number"
+          }
+        ]
+      },
+      "producedBy": {
+        "recipe": "pwt_panel",
+        "inputs": [
+          "raw/pwt110_bra_deu_esp_usa.csv"
+        ]
+      }
+    }
+  ],
+  "recipes": [
+    {
+      "name": "gdp_per_capita",
+      "description": "GDP per capita, its annual growth, and its level relative to the United States.",
+      "path": "recipes/gdp_per_capita",
+      "inputs": [
+        "useful-views/pwt-panel.parquet"
+      ],
+      "outputs": [
+        "useful-views/gdp-per-capita.parquet"
+      ],
+      "steps": [
+        {
+          "name": "derive_measures",
+          "path": "recipes/gdp_per_capita/01_derive_measures.py",
+          "description": "Compute GDP per capita (rgdpe / pop, in 2021 US$), its annual growth in percent (from rgdpna / pop, the series PWT recommends for growth over time), and its level relative to the United States in the same year."
+        }
+      ]
+    },
+    {
+      "name": "pwt_panel",
+      "description": "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States.",
+      "path": "recipes/pwt_panel",
+      "inputs": [
+        "raw/pwt110_bra_deu_esp_usa.csv"
+      ],
+      "outputs": [
+        "useful-views/pwt-panel.parquet"
+      ],
+      "steps": [
+        {
+          "name": "reshape_long",
+          "path": "recipes/pwt_panel/01_reshape_long.py",
+          "description": "Reshape the wide export (one column per year) into one row per country, variable and year."
+        },
+        {
+          "name": "keep_core_variables",
+          "path": "recipes/pwt_panel/02_keep_core_variables.py",
+          "description": "Keep eight core variables: three measures of GDP, population, employment, hours worked, human capital and TFP."
+        },
+        {
+          "name": "pivot_to_panel",
+          "path": "recipes/pwt_panel/03_pivot_to_panel.py",
+          "description": "Spread the variables into columns, giving one row per country and year."
+        }
+      ]
+    }
+  ]
+}

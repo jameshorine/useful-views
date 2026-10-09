@@ -1,0 +1,3 @@
+description = "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States."
+inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
+outputs = ["useful-views/pwt-panel.parquet"]
