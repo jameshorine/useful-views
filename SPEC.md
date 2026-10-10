@@ -105,12 +105,15 @@ The generated `.gitignore` is exactly:
 raw/*
 !raw/.gitkeep
 work/
+useful-views/*.parquet
 ```
 
 The starter project README explains the structure and the conventions in
 section 6, so a new student or an AI tool can write a compliant recipe from it.
 
-**ASSUMPTION**: `useful-views/` is committed to git, not ignored.
+The data files in `useful-views/` are git-ignored; everything else in it,
+including the generated `README.md`, is committed. (Decided; was an
+ASSUMPTION.)
 
 ## 6. Writing a recipe
 
@@ -146,8 +149,8 @@ Format:
 - `inputs`: a list of at least one path. Each is a file under `raw/`
   (subfolders allowed) or a file directly inside `useful-views/`.
 - `outputs`: a list of at least one path. Each is a file directly inside
-  `useful-views/`, and not `useful-views/README.md`. **ASSUMPTION**: a recipe
-  may declare more than one output.
+  `useful-views/`, and not `useful-views/README.md`. A recipe may declare
+  more than one output. (Decided; was an ASSUMPTION.)
 - All paths are relative to the project root and use forward slashes. The
   path written in `recipe.toml` is the same string the step uses in its code,
   and the same string a downstream recipe uses to name the view as an input.
@@ -163,8 +166,9 @@ Format:
 - Steps hand data to each other only through files in `work/<recipe>/`.
 - A recipe never writes to `raw/` and never reads another recipe's work files.
 
-Views are tables. **ASSUMPTION**: a view is a `.parquet` or `.csv` file;
-parquet is what the template and examples use.
+Views are tables. A view is a `.parquet` file. (Decided; was an ASSUMPTION
+that also allowed `.csv`. The allowed extensions live in one constant so
+more can be added later.)
 
 The template written by `new_recipe` uses the marker `TODO` at the start of
 the recipe description and of the stub step's top comment.
@@ -178,15 +182,37 @@ It is always rebuilt from the set of recorded recipes. A recipe becomes
 recorded when it first runs successfully, and each later successful run
 replaces its record wholesale.
 
+A recipe's record is its entry in `recipes` and its views' resources. Raw
+resources are shared, not part of any one record. A run describes only its
+own recipe's views and raw inputs on disk; every other recipe's record is copied unchanged from the
+existing `datapackage.json`, because on a fresh clone `raw/` and the views
+are absent. A raw file read by several recipes carries the description from
+the most recent of their runs, even if that recipe was later removed, until
+a remaining reader runs again. A raw resource that no recorded recipe reads
+is dropped.
+
 - `name`: the project folder's name, lowercased, with anything other than
-  letters, digits, `-`, `_` and `.` replaced by `-`.
+  ASCII letters, digits, `-`, `_` and `.` replaced by `-`. Recomputed on
+  every rebuild.
 - `resources`, in this order:
-  1. every raw input used by a recorded recipe, sorted by path, with the
-     schema Frictionless infers;
+  1. every raw input used by a recorded recipe, sorted by path, with its
+     schema (see below);
   2. for each recorded recipe in name order, its views sorted by path, each
-     with its inferred schema and
+     with its schema and
      `"producedBy": {"recipe": "<name>", "inputs": [<paths>]}`.
-- A resource's name is its file name without the extension.
+- A resource's name is its file name without the extension, lowercased,
+  with anything other than `a-z`, `0-9`, `-`, `_` and `.` replaced by `-`
+  (the Data Package standard allows only those characters).
+- Schemas are read with pyarrow, not Frictionless. A parquet file's schema
+  comes from its own column types. A raw `.csv` file's schema comes from
+  pyarrow's type inference over the whole file. Any other raw file is
+  recorded without a schema. Arrow integer types map to `integer`, floating
+  and decimal types to `number`, booleans to `boolean`, strings to `string`,
+  dates to `date`, timestamps to `datetime`, times to `time`, and anything
+  else to `any`. Resource keys and their order are those of
+  `reference/datapackage.json`: `name`, `type`, `path`, `scheme`, `format`,
+  `mediatype`, `encoding` (text formats only; `utf-8-sig` when the file
+  begins with a byte-order mark, otherwise `utf-8`), `schema`, `producedBy`.
 - `recipes`: the recorded recipes sorted by name, each with name,
   description, path, inputs, outputs, and steps (name, path, description, in
   run order), copied from the recipe folder at run time.
@@ -220,6 +246,7 @@ same functions and adds nothing of its own.
 | `new_recipe(name)` | `useful-views new-recipe <name>` | Create `recipes/<name>/` with a template `recipe.toml` and one stub step, `01_first_step.py`. Refuse if the folder exists. |
 | `run(recipe)` | `useful-views run <recipe>` | Run one recipe and record what it produced. |
 | `check()` | `useful-views check` | Report the state of the project. |
+| `sync(all=False)` | `useful-views sync [--all]` | Make the views and `datapackage.json` match the recipe folders, like `uv sync`: remove what is no longer declared, then run what is missing or changed, upstream first. `all` runs every recipe. See section 17. |
 | `root()` | none | Return the project root as a path, so a notebook can read a view with its own library. |
 
 `check()` reports:
@@ -293,10 +320,13 @@ successful run. `check()` reports those views as missing. This is intended.
 ## 11. Technical constraints
 
 - Python 3.11+ (for the built-in TOML reader).
-- Dependencies: `frictionless`, `pandas`, `pyarrow`. Frictionless cannot read
-  a parquet file without both of the others. They are internal; the package
-  never asks a step author to use pandas.
-- `polars` is a test dependency only, because the reference steps use it.
+- Runtime dependency: `pyarrow` only. It is internal; the package never asks
+  a step author to use it.
+- Test dependencies: `pytest`; `polars`, because the reference steps use it;
+  and `frictionless`, to check rule 17.
+- Files the package writes use UTF-8 and LF line endings on every OS.
+  `datapackage.json` is `json.dumps(indent=2, ensure_ascii=False)` with no
+  trailing newline; the catalog ends with exactly one newline.
 - Standard `pyproject.toml`, `src/` layout, pytest.
 - Must work on Windows, macOS and Linux.
 - Do not publish to PyPI. Do not upload anything.
@@ -312,8 +342,8 @@ build them:
 - R steps: a step file `NN_name.R` in the same folder, run by `Rscript`.
 - An upper limit on, or any measurement of, the size of a step.
 - Recording where a raw input came from and how to fetch it.
-- Running upstream recipes automatically; caching; scheduling.
-- A command to remove a recipe's record.
+- Running upstream recipes automatically when one recipe is run; caching;
+  scheduling. (`sync` already runs what is missing or changed, in order.)
 - Handling raw data too large to keep inside the project.
 - Subfolders under `useful-views/`.
 - Notebooks as steps.
@@ -366,3 +396,161 @@ The two recipe folders are the intended authoring format. `datapackage.json`, th
 `useful-views/README.md` were produced by a throwaway script that acted out
 rules 9 to 13 on those recipes, to confirm the numbers, that a second run
 changes nothing, and that the result validates. No package code exists yet.
+
+## 17. Decisions made during planning (2026-10-09)
+
+These settle questions the sections above left open. Where they differ from
+an earlier section, this section wins.
+
+**Records and other recipes**
+
+- `run` never changes another recipe's record (rule 16 holds strictly).
+- Rules 5 to 8 read both the other recipes' `recipe.toml` files and the
+  records in `datapackage.json`. Rule 5 also requires the producing recipe to
+  be recorded with that view among its outputs; otherwise refuse with "run
+  `recipes/<x>` first". Rule 7 also refuses an output that another recipe's
+  record still claims; when that recipe's folder is gone, the message says to
+  run `useful-views sync`. Rule 6 builds its graph from the same sources.
+- `run` records one recipe by running it. `sync` makes the whole project
+  match its recipe folders, the way `uv sync` makes an environment match its
+  lock file, and records only ever come from real runs. In order, `sync`:
+  1. reads every recipe folder (rules 1 to 3) and works out the run order.
+     A problem with any recipe, or a cycle (rule 6), refuses the sync before
+     anything on disk changes. A folder without a `recipe.toml` is skipped
+     with a warning;
+  2. removes the records of recipes whose folder no longer exists, and
+     removes from a recipe's record any output its `recipe.toml` no longer
+     declares. The view files of those outputs are deleted, unless another
+     recipe now declares the same path. Recipes that read a removed view are
+     named in a warning;
+  3. runs, upstream first, every recipe that has never run, whose current
+     `recipe.toml` and steps differ from its record, or whose views are
+     missing, and every recipe downstream of those. With `all`, it runs every
+     recipe. Among recipes that do not depend on each other, ones that
+     already have a record run first, then the rest in name order. A record
+     left with no outputs by step 2 is removed, so that recipe runs again. It
+     stops at the first recipe that fails or is refused; the ones before it
+     stay recorded, and the message says what sync had already changed.
+  Without hashing (section 12), a change inside a step's code is not
+  noticed; `run` that recipe, or `sync --all`.
+
+**Recipe format**
+
+- Text files (`recipe.toml`, steps) are read as UTF-8, tolerating a
+  byte-order mark and CRLF line endings. A file that is not UTF-8 is refused
+  with a message asking to save it as UTF-8.
+- A step's description: skip leading blank lines, a shebang on line 1, a
+  coding line on line 1 or 2, `# %%` / `# In[..]:` cell markers and a
+  Jupytext `# ---` header block; then take the unbroken block of `#` lines.
+  Strip the leading `#` characters and surrounding whitespace from each line,
+  drop lines that are then empty, join with one space and collapse runs of
+  whitespace. An empty result is "no top comment" (rule 2). The `recipe.toml`
+  description is trimmed and has its whitespace collapsed the same way.
+- A step file matches `^[0-9]{2}_.+\.py$` (case-sensitive). Rule 3 applies to
+  `NN_` files with extension `.R`, `.r`, `.ipynb`, `.Rmd`, `.qmd`, `.jl` or
+  `.do`; `.ipynb` gets a message saying notebooks cannot be steps yet. Other
+  `NN_` files (such as `01_x.py.bak`) are ignored. Files that look like a
+  near-miss (`1_x.py`, `001_x.py`, `01-x.py`) produce a warning but do not
+  block the run. `00_` and gaps in numbering are allowed.
+- Paths are not normalised. A path that starts with `./`, contains `\`, `//`,
+  `..`, `~`, surrounding spaces, or is absolute is refused with the corrected
+  string. Rules 4 and 12 require the letter case on disk to match exactly.
+  Rules 5 to 8 compare exact strings.
+- A path listed twice in `inputs` or `outputs` is refused under rule 1.
+- Unknown keys in `recipe.toml` produce a warning naming each key; the run
+  continues.
+- A recipe folder whose name breaks the naming rule is refused before the
+  run.
+- An output that ends in anything other than an allowed view extension
+  (`.parquet`) is refused under rule 7. An output path that is a directory is
+  refused under rule 7. An empty (0-byte) or directory raw input is refused
+  under rule 4.
+- A template recipe (`new_recipe`) writes `inputs = []` and `outputs = []`
+  with commented examples, so it never claims a path. Empty lists are a
+  rule 1 refusal.
+
+**Running**
+
+- Steps run with `sys.executable`, cwd = project root, stdin closed,
+  `PYTHONIOENCODING=utf-8`. Their stdout and stderr are relayed live through
+  Python's `sys.stdout` and `sys.stderr` (so they show in a notebook cell),
+  and stderr is kept. A failed step raises `StepFailed`, naming the step file
+  and exit code, with the last 50 lines of stderr in the message. On
+  `ModuleNotFoundError` the message also names the interpreter.
+- Rule 12 requires each output to be a non-empty regular file.
+- On any failure after rule 9, every declared output is deleted, so a failed
+  run always leaves its views absent. Work files stay for inspection.
+- `run` accepts `pwt_panel`, `recipes/pwt_panel` or `recipes/pwt_panel/`.
+  The name must match the folder's case on disk.
+
+**Scanning**
+
+- Names that start with `.`, plus `__pycache__`, `Thumbs.db` and
+  `desktop.ini`, are ignored everywhere the package scans.
+- Every directory in `recipes/` that holds a `recipe.toml` counts as a recipe
+  for rules 5 to 8. A directory without one produces a warning. Plain files in
+  `recipes/` are ignored.
+
+**init, root and check**
+
+- `init` writes `datapackage.json` as `{"name": …, "resources": [],
+  "recipes": []}` and a catalog with only its title and "Generated by…" line,
+  through the same code `run` uses. It creates any missing folder or file
+  (`raw/.gitkeep` is the only `.gitkeep`) and never overwrites one. It
+  creates `path` and its parents if needed, refuses inside an existing
+  project (naming the ancestor), and warns, without editing, when an existing
+  `.gitignore` lacks a line the generated one would have.
+- Root discovery accepts a `datapackage.json` only if it has a `recipes` key;
+  otherwise it keeps walking up. If none is found it names the starting
+  folder.
+- `check()` also reports a `recipe.toml` that is missing or unreadable. It
+  returns a list of findings, each with `kind`, `path` and `message`, in a
+  fixed order. "Declared" inputs come from the current `recipe.toml` files.
+  A file in `useful-views/` is stray only if no `recipe.toml` declares it and
+  no record lists it. A subdirectory in `useful-views/` is reported.
+  `check()` does not apply rules 1 to 8.
+
+**Catalog**
+
+- Sections follow `resources` order. Several inputs go on one line,
+  ``- Inputs: `a`, `b` ``, in declared order. Every view gets its own full
+  section. `|` in table cells is escaped as `\|`. A view with no columns gets
+  "No columns detected." in place of the table. With no views, the catalog is
+  the title and the "Generated by…" line.
+
+**API and CLI**
+
+- `new_recipe`, `run`, `check` and `sync` take a keyword-only `root=None`;
+  when given it is the exact root and must hold `datapackage.json`. `root()`
+  returns a resolved `Path`. `init` returns the root `Path`, `new_recipe` the
+  recipe folder, `run` a `RunResult(recipe, outputs, warnings)`, `sync` a
+  `SyncResult(removed, dropped, deleted, ran, warnings)`, and `check` the
+  list of findings.
+- Exceptions derive from `UsefulViewsError`. Refusals raise
+  `RecipeRefused` with `.rule` (an integer, or `None` for refusals that
+  section 17 adds) and `.path` (the file to fix).
+- Warnings are issued with `warnings.warn` (always shown) and also returned.
+- CLI: `argparse`; also runnable as `python -m useful_views`. Exit codes: 0
+  success, 1 `check` found problems, 2 usage error, 3 refused or failed.
+- A raw file that is not `.csv` or `.parquet` is recorded with `type` `file`,
+  `scheme` `file`, `format` (its lowercased extension), and no `mediatype`,
+  `encoding` or `schema`. A `.csv` that is not UTF-8, that pyarrow cannot
+  parse, or whose header has a blank or repeated name is recorded the same
+  way. When inferring a CSV's types only empty cells count as missing, as in
+  the Data Package standard, so a column holding `NA` is a string column.
+  These keep rule 17 true for the files researchers commonly have.
+
+**Added after review**
+
+- Rule 6 is checked first among rules 4 to 8: it needs no files, and a cycle
+  explains a missing view better than "run the other recipe first".
+- A path in `recipe.toml` that could not exist on Windows (a component with
+  `<>:"|?*` or a control character, ending in `.` or a space, or a reserved
+  device name such as `CON`) is refused under rule 4 or 7.
+- Unexpected errors in the CLI are printed as `error: <type>: <message>` and
+  exit with 3, never 1.
+- Steps run with `PYTHONUNBUFFERED=1` and their output is relayed in chunks
+  as it arrives; a background process a step leaves running does not keep
+  `run` waiting.
+- `pytest-xdist` is a test dependency, so the suite can run in parallel
+  (`uv run pytest -n auto`).

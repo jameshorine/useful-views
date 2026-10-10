@@ -52,7 +52,7 @@ There are a few new vocabulary terms as a result.
 
 **Raw input**: a file in `raw/`. Nothing in `raw/` is produced by a recipe.
 
-**Recipe**: a recipe, like in the kitchen, is made up of steps. It is a
+**Recipe**: a recipe, just like cooking, is made up of steps. It is a
 folder in `recipes/`. From the inputs it declares, it produces the useful
 views it declares, by running its steps in order.
 
@@ -166,3 +166,34 @@ No file has two authors.
 - R steps. The group uses both R and Python; the layout is designed so an R
   step is one more file in a recipe folder.
 - An upper limit on the size of a step.
+- Cookbooks. A cookbook is a named collection of recipes whose views together
+  form one cohesive set of data products, such as the data behind one paper or
+  one dashboard. Cookbooks are written by humans in `cookbook.json` at the
+  project root:
+
+  ```json
+  {
+    "cookbooks": [
+      {
+        "name": "pwt-growth",
+        "description": "Penn World Table panel and GDP per capita measures for Brazil, Germany, Spain and the United States.",
+        "recipes": [
+          "recipes/pwt_panel",
+          "recipes/gdp_per_capita"
+        ],
+        "views": [
+          "useful-views/pwt-panel.parquet",
+          "useful-views/gdp-per-capita.parquet"
+        ]
+      }
+    ]
+  }
+  ```
+
+  `recipes` lists the recipe folders in the cookbook, upstream first, and
+  `views` lists the data products it delivers. Every view must be made by
+  one of the listed recipes, and every recipe a listed one depends on must
+  be listed too. `useful-views check` would report a cookbook that breaks
+  either rule. `useful-views sync --cookbook pwt-growth` would run just
+  these recipes, and the catalog would group the views by cookbook.
+

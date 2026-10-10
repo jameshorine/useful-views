@@ -1,0 +1,16 @@
+# The recipe {name}: from the inputs below, its steps make the views in outputs.
+#
+# Replace the TODO description with one sentence saying what this recipe
+# produces. List every file the steps read in `inputs` and every view they
+# write in `outputs`. Paths start at the project root and use forward
+# slashes, and each must be the same string the steps use in their code to
+# read or write that file, e.g.
+#
+#   inputs  = ["raw/my_data.csv"]
+#   outputs = ["{views}/{view}.parquet"]
+#
+# An input is a file under raw/, or a view another recipe lists in its
+# outputs. An output is a .parquet file directly inside {views}/.
+description = "TODO: one sentence saying what this recipe produces."
+inputs  = []
+outputs = []
