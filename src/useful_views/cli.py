@@ -6,7 +6,7 @@ import argparse
 import sys
 import warnings
 
-from . import check, init, new_recipe, run, sync
+from . import __version__, check, init, new_recipe, run, sync
 from .errors import UsefulViewsError, UsefulViewsWarning
 
 EXIT_OK = 0
@@ -19,6 +19,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="useful-views",
         description="Turn raw data into documented derived tables (useful views).",
     )
+    parser.add_argument("--version", action="version", version=f"useful-views {__version__}")
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
     p = commands.add_parser("init", help="create the project structure (safe to run twice)")
     p.add_argument("path", nargs="?", default=".", help="project folder (default: the current folder)")

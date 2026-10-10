@@ -1,0 +1,62 @@
+name: CI
+
+# Manual-only while the repository is private (Actions minutes are limited).
+# Once it is public, run CI automatically by replacing this block with:
+#   on:
+#     push:
+#       branches: [main, dev]
+#     pull_request:
+#     workflow_dispatch:
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --locked --python ${{ matrix.python }}
+      - name: Test
+        run: uv run --locked pytest -n auto
+
+  lowest-dependencies:
+    name: test (oldest supported pyarrow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install with pyarrow 16
+        run: |
+          uv venv --python 3.11
+          echo "pyarrow==16.0.0" > constraints.txt
+          uv pip install -c constraints.txt -e . pytest pytest-xdist polars "frictionless[pandas]"
+      - name: Test
+        run: .venv/bin/python -m pytest -n auto
+
+  package:
+    name: build and check the package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build
+        run: uv build
+      - name: Check metadata
+        run: uvx twine check --strict dist/*
+      - name: Install the wheel and run the command
+        run: |
+          uv venv --python 3.11 /tmp/wheel-env
+          uv pip install --python /tmp/wheel-env/bin/python dist/*.whl
+          /tmp/wheel-env/bin/useful-views --version

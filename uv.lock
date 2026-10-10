@@ -1446,7 +1446,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pyarrow", specifier = ">=14" }]
+requires-dist = [{ name = "pyarrow", specifier = ">=16" }]
 
 [package.metadata.requires-dev]
 dev = [

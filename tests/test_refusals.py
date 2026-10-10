@@ -335,7 +335,7 @@ def test_rule3_other_language_step(driver, project, ext):
     write(project, bad, "# Clean the data.\n")
     seed_leftovers(project)
     out = assert_refused(driver, project, "a", rule=3, path=bad)
-    assert "only python" in out.message.lower(), out.message
+    assert "must be python (.py) files" in out.message.lower(), out.message
 
 
 def test_rule3_notebook_step(driver, project):

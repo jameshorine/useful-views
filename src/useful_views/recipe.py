@@ -221,7 +221,7 @@ def find_steps(root: Path, name: str, collected: list[str]) -> list[Step]:
             if filename.endswith(".ipynb"):
                 why = "Notebooks cannot be steps yet. Export it as a .py script (in Jupyter: File > Save and Export Notebook As > Executable Script), name it like 01_name.py, and remove the notebook from the recipe folder."
             else:
-                why = "Only Python steps are supported so far. Rewrite it as a .py file, or move it out of the recipe folder."
+                why = "Steps must be Python (.py) files. Rewrite it as a .py file, or move it out of the recipe folder."
             raise RecipeRefused(f"{rel} is named like a step but is not a .py file. {why}", rule=3, path=rel)
         match = STEP_FILE.fullmatch(filename)
         if match:

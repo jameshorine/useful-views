@@ -11,27 +11,50 @@ United States. It is licensed under CC BY 4.0; see [References](#references).
 
 ## Setup
 
-Clone this repository and install the package, together with polars, which
-the example's steps use, into one Python environment. Steps run with the
-same Python as useful-views, so whatever library your steps import must be
-installed in that environment too.
+Work in a new, empty folder. Install useful-views together with polars,
+which the example's steps use, into one Python environment. Use uv or pip,
+whichever you prefer.
+
+With uv:
+
+<!-- quickstart-test: skip -->
+```sh
+uv init --bare                     # creates a pyproject.toml for this folder
+uv add useful-views polars
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+With pip:
+
+<!-- quickstart-test: skip -->
+```sh
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install useful-views polars
+```
+
+Steps run with the same Python as useful-views, so whatever library your
+steps import must be installed in that environment too: `uv add <package>`
+or `pip install <package>`. (With uv you can also skip activating and put
+`uv run` in front of each command, as in `uv run useful-views check`.)
+
+The walkthroughs copy their raw file and recipes from the `reference/`
+folder of this repository, so get a copy of it in the same folder:
 
 <!-- quickstart-test: skip -->
 ```sh
 git clone https://github.com/jameshorine/useful-views.git
-python -m venv .venv
-source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install ./useful-views polars
 ```
 
-Stay in the folder that now holds `useful-views/` (the clone) and `.venv/`.
-Both walkthroughs start there.
+You only take the example files from the clone; useful-views itself is the
+installed package. Both walkthroughs start in this folder, which now holds
+`useful-views/` (the clone) and `.venv/`.
 
-For the notebook walkthrough, the notebook must use this environment too:
-install Jupyter into it (`pip install jupyterlab`) and start it from this
-folder, or in VS Code choose `.venv` as the notebook's kernel. If
-`import useful_views` fails in a notebook, the notebook is running a
-different Python.
+For the notebook walkthrough, the notebook must run in this environment
+too: install Jupyter into it (`uv add jupyterlab` or `pip install
+jupyterlab`) and start it from this folder, or in VS Code choose `.venv` as
+the notebook's kernel. If `import useful_views` fails in a notebook, the
+notebook is running a different Python.
 
 ## In Python (a notebook)
 

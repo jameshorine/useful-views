@@ -24,8 +24,7 @@ so every project looks the same and every view records which recipe made it.
 - PhD students in years 1 to 4, in fields such as economics, often in
   notebooks, often with AI coding tools. Engineering experience varies widely.
 - A senior lead who reviews their work in git.
-- The group uses both Python and R. This version runs Python steps only, but
-  nothing in the layout or file formats may assume Python.
+- Steps are Python scripts. (R steps were considered and dropped.)
 
 Design for the least experienced student: the tool must accept the script
 they would have written anyway, as long as it sits in a recipe folder and
@@ -158,8 +157,7 @@ Format:
   run in numeric order. The step's name is the part after the underscore.
   Any other file in the folder is ignored.
 - A step's description is the unbroken block of lines starting with `#` at
-  the very top of its file, joined with spaces. Required. (`#` begins a
-  comment in both Python and R.)
+  the very top of its file, joined with spaces. Required.
 - Steps are ordinary scripts. They run with the project root as the working
   directory, use plain relative paths, and do not import `useful_views`. The
   package has no opinion on which data library a step uses.
@@ -270,7 +268,7 @@ message if:
 2. The recipe has no step file; a step file has no top comment, or one that
    starts with `TODO`; or two step files share a number.
 3. A file in the recipe folder is named like a step but is not `.py` (for
-   example `02_clean.R`). Say that only Python steps are supported so far.
+   example `02_clean.R`). Say that steps must be Python (`.py`) files.
 4. An input is not a file under `raw/` or directly inside `useful-views/`, or
    does not exist.
 5. An input inside `useful-views/` is not declared as an output by any recipe.
@@ -329,7 +327,8 @@ successful run. `check()` reports those views as missing. This is intended.
   trailing newline; the catalog ends with exactly one newline.
 - Standard `pyproject.toml`, `src/` layout, pytest.
 - Must work on Windows, macOS and Linux.
-- Do not publish to PyPI. Do not upload anything.
+- The build never publishes or uploads anything. Releases to PyPI are made
+  by the owner (MIT license, `uv build`, then `uv publish`).
 
 ## 12. Later, not now
 
@@ -338,8 +337,8 @@ build them:
 
 - Hashing of raw inputs, recipes and views, and everything that depends on it:
   detecting changed files, reporting a view as stale, refusing to run on a
-  changed input.
-- R steps: a step file `NN_name.R` in the same folder, run by `Rscript`.
+  changed input, and `sync` noticing a change inside a step's code. Planned
+  for a future release.
 - An upper limit on, or any measurement of, the size of a step.
 - Recording where a raw input came from and how to fetch it.
 - Running upstream recipes automatically when one recipe is run; caching;

@@ -3,8 +3,29 @@ name = "useful-views"
 version = "0.1.0"
 description = "A framework and data project structure in which every derived table records the recipe that made it."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "James Horine" }]
 requires-python = ">=3.11"
-dependencies = ["pyarrow>=14"]
+dependencies = ["pyarrow>=16"]
+keywords = ["data", "research", "reproducibility", "data-package", "parquet", "pipelines"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/jameshorine/useful-views"
+Documentation = "https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md"
+Issues = "https://github.com/jameshorine/useful-views/issues"
 
 [project.scripts]
 useful-views = "useful_views.cli:main"
@@ -18,7 +39,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<1.30"]  # 1.30+ writes Metadata-Version 2.5, not yet accepted everywhere
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
