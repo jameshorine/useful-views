@@ -1,5 +1,4 @@
-"""init, new_recipe, root() and root discovery (SPEC sections 4, 5, 9, 14
-and 17 'init, root and check' / 'API and CLI')."""
+"""init, new_recipe, root() and root discovery, through the API and the CLI."""
 
 from __future__ import annotations
 
@@ -121,10 +120,10 @@ def test_init_writes_a_starter_readme_explaining_the_conventions(project):
     assert b"\r\n" not in data
     text = data.decode("utf-8")
     assert text.strip()
-    # The structure of section 5 ...
+    # The project structure ...
     for folder in ("raw/", "recipes/", "work/", "useful-views/", "datapackage.json"):
         assert folder in text, folder
-    # ... and the conventions of section 6.
+    # ... and the conventions for writing a recipe.
     for convention in ("recipe.toml", "description", "inputs", "outputs", ".parquet"):
         assert convention in text, convention
     assert "NN_" in text or "01_" in text
@@ -652,7 +651,7 @@ def test_damaged_datapackage_refuses_init(project):
     assert snapshot(project) == before
 
 
-# --- SPEC section 14: the API works when called from a subfolder ---------------
+# --- the API works when called from a subfolder -------------------------------
 
 
 @pytest.fixture(params=["api", "cli"])

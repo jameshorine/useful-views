@@ -2,7 +2,7 @@
 
 datapackage.json is the record store: its `recipes` list holds one record
 per recorded recipe, and its `resources` list describes the raw files those
-recipes read and the views they made (SPEC.md sections 7, 8 and 17).
+recipes read and the views they made ("Generated files" in the README).
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def describe_csv(root: Path, rel: str) -> dict:
     """Describe a CSV file, inferring column types over the whole file.
 
     The schema must be one the file passes under the Data Package standard
-    (rule 17), so only empty cells count as missing (a column holding "NA"
+    (frictionless validate passes), so only empty cells count as missing (a column holding "NA"
     is a string column), and times and datetimes in a non-standard form are
     strings. A CSV that is not UTF-8, that pyarrow cannot parse, that has
     blank rows, that is not comma-separated, or whose header names are

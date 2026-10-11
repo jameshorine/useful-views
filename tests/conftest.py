@@ -19,7 +19,10 @@ import pytest
 
 import useful_views as uvs
 
-REFERENCE = Path(__file__).resolve().parent.parent / "reference"
+DATA = Path(__file__).resolve().parent / "data"
+# The PWT example exactly as useful-views-data publishes it, plus the outputs
+# it must produce (datapackage.json, useful-views/).
+REFERENCE = DATA / "examples" / "pwt"
 
 
 @dataclass
@@ -126,6 +129,14 @@ class CliDriver:
 
     def sync(self) -> Outcome:
         return self._call("sync")
+
+
+@pytest.fixture(autouse=True)
+def offline_examples(monkeypatch):
+    """example() reads tests/data instead of GitHub, so no test needs the network."""
+    from useful_views.examples import DATA_URL_ENV
+
+    monkeypatch.setenv(DATA_URL_ENV, DATA.as_uri())
 
 
 @pytest.fixture

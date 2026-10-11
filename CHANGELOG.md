@@ -6,13 +6,15 @@ All notable changes to useful-views are recorded here. Versions follow
 
 ## 0.1.0 (unreleased)
 
-The minimum version described in `SPEC.md`.
+The first release: the minimum version.
 
 - A fixed project structure: `raw/`, `recipes/`, `work/`, `useful-views/`,
   a generated `datapackage.json` and a generated catalog,
   `useful-views/README.md`.
 - `init`, `new_recipe`, `run`, `check`, `sync` and `root`, as Python
   functions and as the `useful-views` command.
+- `example` downloads a ready-to-run example project from the
+  useful-views-data repository, pinned to a tag and checked by SHA-256.
 - Recipes are folders with a `recipe.toml` and numbered Python step files;
   every view records the recipe, inputs and steps that made it.
 - `sync` makes the views match the recipe folders, like `uv sync`: it runs

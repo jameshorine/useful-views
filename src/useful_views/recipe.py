@@ -1,7 +1,7 @@
 """Reading a recipe folder: recipe.toml, its step files and their descriptions.
 
-This module only reads. It checks the recipe's own format (rules 1 to 3 in
-SPEC.md section 10, with the details settled in section 17).
+This module only reads. It checks the recipe's own format (rules 1 to 3
+under "Rules" in the README).
 """
 
 from __future__ import annotations

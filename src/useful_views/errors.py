@@ -24,9 +24,9 @@ class ProjectNotFound(ProjectError):
 class RecipeRefused(UsefulViewsError):
     """A recipe was refused before anything on disk changed.
 
-    `rule` is the rule number in SPEC.md section 10, or None for the extra
-    refusals added in section 17. `path` is the file to fix, relative to the
-    project root, when there is one.
+    `rule` is the number of the rule listed under "Rules" in the README, or
+    None when the recipe name itself is refused. `path` is the file to fix,
+    relative to the project root, when there is one.
     """
 
     def __init__(self, message: str, *, rule: int | None = None, path: str | None = None):

@@ -1,4 +1,4 @@
-"""Running one recipe: rules 9 to 13."""
+"""Running one recipe ("What run does" in the README)."""
 
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ def _step_failure(step: Step, code: int, stderr: str) -> StepFailed:
 
 
 def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
-    """Rule 12: each output is a non-empty, readable parquet file."""
+    """Each output must be a non-empty, readable parquet file."""
     bad: list[tuple[str, str]] = []
     for rel in loaded.outputs:
         path = project / rel
@@ -232,22 +232,22 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
     data = load_datapackage(project)
     _, raw_described = check_all(project, loaded, data, collected)
 
-    # Rule 9: a leftover file can never pass for a fresh result.
+    # 1. Clear the old views and work files: a leftover can never pass for a fresh result.
     _remove_outputs(project, loaded.outputs)
     try:
         _empty_work(project, name)
         (project / VIEWS).mkdir(exist_ok=True)
 
-        # Rules 10 and 11.
+        # 2. Run each step in order; stop at the first that fails.
         for step in loaded.steps:
             code, stderr = run_step(project, step)
             if code != 0:
                 raise _step_failure(step, code, stderr)
 
-        # Rule 12.
+        # 3. Every declared view must have been written.
         views = _check_outputs(project, name, loaded)
 
-        # Rule 13: rebuild from records; only this recipe's files were described.
+        # 4. Record the run; only this recipe's files were described again.
         old_views, old_raws = split_resources(data)
         records = [r for r in data["recipes"] if r["name"] != name] + [loaded.record()]
         all_views = {p: r for p, r in old_views.items() if r["producedBy"].get("recipe") != name}
@@ -255,7 +255,7 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
         all_raws = {**old_raws, **raw_described}
         write_generated(project, assemble(project, records, all_views, all_raws))
     except BaseException:
-        # On any failure after rule 9, a failed run leaves its views absent.
+        # On any failure from here on, a failed run leaves its views absent.
         try:
             _remove_outputs(project, loaded.outputs)
         except ProjectError:

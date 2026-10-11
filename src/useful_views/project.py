@@ -34,7 +34,7 @@ def find_root(root: str | Path | None = None) -> Path:
     """The project root: `root` if given, otherwise the nearest folder at or
     above the current directory holding a useful-views datapackage.json."""
     if root is not None:
-        folder = Path(root).resolve()
+        folder = Path(root).expanduser().resolve()
         marker = _project_marker(folder)
         if marker is None:
             load_datapackage(folder)  # raises a ProjectError explaining the damage
@@ -62,10 +62,8 @@ def root() -> Path:
     return find_root()
 
 
-def init(path: str | Path = ".") -> Path:
-    """Create the project structure at `path`. Safe to run twice; never
-    overwrites a file. Returns the project root."""
-    folder = Path(path).resolve()
+def check_not_nested(folder: Path) -> None:
+    """Refuse to create a project inside another one."""
     for ancestor in folder.parents:
         marker = _project_marker(ancestor)
         if marker is None:
@@ -73,8 +71,15 @@ def init(path: str | Path = ".") -> Path:
         if marker:
             raise ProjectError(
                 f"{folder} is inside the useful-views project at {ancestor}. Projects cannot be nested; "
-                f"run init in a folder outside {ancestor}."
+                f"choose a folder outside {ancestor}."
             )
+
+
+def init(path: str | Path = ".") -> Path:
+    """Create the project structure at `path`. Safe to run twice; never
+    overwrites a file. Returns the project root."""
+    folder = Path(path).expanduser().resolve()
+    check_not_nested(folder)
     if folder.exists() and not folder.is_dir():
         raise ProjectError(f"{folder} is a file, not a folder. Choose another path for the project.")
     if (folder / DATAPACKAGE).is_file() and _project_marker(folder) is False:

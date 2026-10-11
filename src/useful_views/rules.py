@@ -1,8 +1,7 @@
 """Pre-run rules 4 to 8: how a recipe's inputs and outputs fit the project.
 
 Rules 5 to 8 look at every other recipe two ways: what its recipe.toml
-declares now, and what its record in datapackage.json says it made
-(SPEC.md section 17).
+declares now, and what its record in datapackage.json says it made.
 """
 
 from __future__ import annotations

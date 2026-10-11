@@ -1,6 +1,5 @@
-"""File formats: recipe and step text (SPEC sections 6 and 17 'Recipe
-format'), datapackage.json resources and schemas (section 7 and the last
-bullet of 17 'API and CLI'), and the catalog (section 8 and 17 'Catalog')."""
+"""File formats: recipe and step text, datapackage.json resources and
+schemas, and the catalog, useful-views/README.md."""
 
 from __future__ import annotations
 
@@ -137,7 +136,7 @@ def test_step_description(text, expected):
 
 
 def test_step_description_coding_line_after_line_2_is_description():
-    # A coding line counts only on line 1 or 2 (SPEC 17); on line 3 it is a comment.
+    # A coding line counts only on line 1 or 2; on line 3 it is a comment.
     assert step_description("\n\n# coding: utf-8\n# Real.\n") == "coding: utf-8 Real."
 
 

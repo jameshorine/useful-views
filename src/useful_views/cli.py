@@ -6,7 +6,7 @@ import argparse
 import sys
 import warnings
 
-from . import __version__, check, init, new_recipe, run, sync
+from . import __version__, check, example, init, new_recipe, run, sync
 from .errors import UsefulViewsError, UsefulViewsWarning
 
 EXIT_OK = 0
@@ -23,6 +23,9 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
     p = commands.add_parser("init", help="create the project structure (safe to run twice)")
     p.add_argument("path", nargs="?", default=".", help="project folder (default: the current folder)")
+    p = commands.add_parser("example", help="download a ready-to-run example project")
+    p.add_argument("name", help="the example to download, such as pwt")
+    p.add_argument("path", nargs="?", default=None, help="folder to create (default: <name>-example)")
     p = commands.add_parser("new-recipe", help="create recipes/<name>/ from a template")
     p.add_argument("name")
     p = commands.add_parser("run", help="run one recipe and record what it produced")
@@ -67,6 +70,10 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "init":
         folder = init(args.path)
         print(f"useful-views project ready at {folder}")
+        return EXIT_OK
+    if args.command == "example":
+        folder = example(args.name, args.path)
+        print(f"Example {args.name!r} ready at {folder}. Make its views with: cd {folder} && useful-views sync")
         return EXIT_OK
     if args.command == "new-recipe":
         folder = new_recipe(args.name)

@@ -281,7 +281,7 @@ CSV_SHAPES = {
 
 
 def test_every_common_csv_shape_gets_a_schema_that_validates(tmp_path):
-    """Rule 17: whatever schema is recorded for a raw CSV, the file passes it."""
+    """Whatever schema is recorded for a raw CSV, frictionless validate passes it."""
     import json
 
     (tmp_path / "raw").mkdir()
@@ -293,3 +293,9 @@ def test_every_common_csv_shape_gets_a_schema_that_validates(tmp_path):
     (tmp_path / "datapackage.json").write_text(json.dumps({"name": "x", "resources": resources}))
     proc = validate(tmp_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_root_argument_expands_home(project, monkeypatch):
+    monkeypatch.setenv("HOME", str(project.parent))
+    monkeypatch.setenv("USERPROFILE", str(project.parent))
+    assert uvs.check(root=f"~/{project.name}") == []

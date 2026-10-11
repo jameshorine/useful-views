@@ -1,4 +1,4 @@
-"""SPEC sections 9 and 17: check() and sync().
+"""check() and sync().
 
 check() reports, as a list of findings each with `kind`, `path` and
 `message`, in a fixed order:
@@ -210,7 +210,7 @@ def test_missing_view_input_of_never_run_recipe(driver, project):
 
 
 def test_input_missing_with_wrong_case_on_disk(project):
-    """Inputs must match the letter case on disk (section 17)."""
+    """Inputs must match the letter case on disk."""
     add_raw_csv(project, "raw/Data.csv")
     write_recipe(project, "alpha", inputs=["raw/data.csv"], outputs=["useful-views/alpha.parquet"])
     kinds = [f.kind for f in findings(project)]
@@ -289,7 +289,7 @@ def test_deleted_view_is_reported(driver, project):
 
 
 def test_failed_run_leaves_views_missing_and_check_reports_them(driver, project):
-    """Section 10: after a failed run the old views are gone while
+    """After a failed run the old views are gone while
     datapackage.json still describes the last successful run. Intended."""
     recorded_project(project)
     before = generated(project)

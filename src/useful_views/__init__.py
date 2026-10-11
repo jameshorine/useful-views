@@ -13,6 +13,7 @@ from .errors import (
     UsefulViewsError,
     UsefulViewsWarning,
 )
+from .examples import ExampleError, example
 from .new import new_recipe
 from .project import init, root
 from .runner import RunResult, run
@@ -24,6 +25,7 @@ except PackageNotFoundError:  # running from a source tree that is not installed
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "ExampleError",
     "Finding",
     "OutputError",
     "ProjectError",
@@ -35,6 +37,7 @@ __all__ = [
     "UsefulViewsError",
     "UsefulViewsWarning",
     "check",
+    "example",
     "init",
     "new_recipe",
     "root",

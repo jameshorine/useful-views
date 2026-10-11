@@ -1,16 +1,27 @@
 # useful-views
 
-`useful-views` is a small Python package that gives a data project a fixed
+`useful-views` is a small agent-in-the-loop Python package that gives a data project a fixed
 structure, so that every derived table (a "useful view") records the recipe
-that made it.
+that made it. Every recipe records the steps that make that recipe. 
 
-> **Status: alpha.** The minimum version is built and tested on Python 3.11
-> to 3.14. Install it with `pip install useful-views` or
-> `uv add useful-views`, then follow
-> [the quickstart](https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md). `SPEC.md` is the build
-> specification and `reference/` is a worked example of the structure below.
 
-## The structure
+
+
+> **Status: alpha.** Tested on Python 3.11 to 3.14. To see it working,
+> `useful-views example pwt` downloads a ready-to-run example project, and
+> [the quickstart](https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md)
+> walks through it step by step.
+
+## Install
+
+```sh
+uv add useful-views        # or: pip install useful-views
+```
+
+Install it into the same Python environment as the libraries your steps use
+(polars, pandas, ...): steps run with the Python that runs useful-views.
+
+## The resulting data project structure
 
 Using `useful-views` in a data project results in this layout:
 
@@ -138,37 +149,252 @@ The conventions:
   import `useful_views`. Use whichever data library you like.
 - Steps pass data to each other only through files in `work/<recipe>/`.
 
+In detail:
+
+- **Recipe folder name**: lowercase letters, digits and underscores, such as
+  `pwt_panel`. Create one with `useful-views new-recipe <name>`; its template
+  says TODO and is refused until you fill it in.
+- **`recipe.toml`** has exactly three keys. `description` is one sentence,
+  required. `inputs` and `outputs` are lists of at least one path each. Other
+  keys are ignored with a warning.
+- **Inputs**: a file anywhere under `raw/`, or a view directly inside
+  `useful-views/` that another recipe makes and has already made
+  successfully.
+- **Outputs**: one or more `.parquet` files directly inside `useful-views/`.
+  Each view is made by exactly one recipe.
+- **Paths**: relative to the project root, with forward slashes, matching the
+  letter case on disk. Write `raw/data.csv`, not `./raw/data.csv`,
+  `raw\data.csv` or an absolute path. The error message gives the corrected
+  string where it can; inside double quotes a backslash is a TOML escape, so
+  then it only tells you to use forward slashes.
+- **Step files**: `NN_name.py`, two digits, an underscore and a name. They
+  run in numeric order; `00_` and gaps in the numbering are fine. A file like
+  `1_clean.py`, `001_clean.py` or `01-clean.py` is not run, and `run` warns
+  about it. R, notebook, Quarto, Julia and Stata files named like a step
+  (`02_clean.R`, `02_explore.ipynb`, ...) are refused: steps must be Python
+  files. Any other file in the folder is ignored.
+- **Step description**: the block of `#` lines at the very top of the file,
+  joined into one sentence. Blank lines, a shebang, a coding line, notebook
+  cell markers (`# %%`, `# In[1]:`) and a Jupytext `# ---` header before it
+  are skipped. It must not start with TODO.
+- **Steps** run one at a time as separate processes, with the project root as
+  the working directory, using the same Python interpreter as useful-views,
+  and with `work/<recipe>/` already created and empty. A step gets no
+  keyboard input, so `input()` and `breakpoint()` fail inside `run`; to debug
+  a step, run it yourself from the project root, as in
+  `python recipes/pwt_panel/01_reshape_long.py`. A step reads its recipe's inputs and earlier steps' files in
+  `work/<recipe>/`, and writes the recipe's outputs. It never writes to
+  `raw/`, and never reads another recipe's work files.
+
 ## Example data
 
-The worked example in `reference/` uses an extract of the Penn World Table,
-version 11.0, for Brazil, Germany, Spain and the United States. The Penn
-World Table is licensed under a Creative Commons Attribution 4.0
-International License. `reference/README.md` gives the exact source and the
-citation.
+Example projects live in a separate repository,
+[useful-views-data](https://github.com/jameshorine/useful-views-data), the
+way seaborn's example datasets live in seaborn-data. `useful-views example
+<name> [path]` (Python: `example(name, path)`) downloads one into a new
+folder, ready to run with `useful-views sync`. Each release of useful-views
+pins a version of that repository and the checksum of every file, so an
+example never changes under you and a damaged download is never used.
+
+The `pwt` example uses an extract of the Penn World Table, version 11.0, for
+Brazil, Germany, Spain and the United States. The Penn World Table is
+licensed under a Creative Commons Attribution 4.0 International License; the
+example's `README.md` gives the exact source and the citation.
 
 ## Commands
 
 | Python | Command line | What it does |
 |---|---|---|
-| `init()` | `useful-views init` | Create the structure above. |
+| `init(path=".")` | `useful-views init [path]` | Create the structure above. Safe to run twice; never overwrites a file. |
+| `example(name, path=None)` | `useful-views example <name> [path]` | Download a ready-to-run example project, such as `pwt`. See [Example data](#example-data). |
 | `new_recipe(name)` | `useful-views new-recipe <name>` | Create a recipe folder with a template `recipe.toml` and one stub step. |
-| `run(recipe)` | `useful-views run <recipe>` | Run a recipe's steps in order and record what it produced. |
-| `check()` | `useful-views check` | Report missing inputs, missing views, recipes never run, and stray files. |
-| `sync()` | `useful-views sync` | Make the views match the recipe folders, like `uv sync`: run what is missing or changed, upstream first, and remove what is no longer declared. |
+| `run(recipe)` | `useful-views run <recipe>` | Run one recipe's steps in order and record what it produced. |
+| `sync(all=False)` | `useful-views sync [--all]` | Make the views match the recipe folders, like `uv sync`: run what is missing or changed, upstream first, and remove what is no longer declared. |
+| `check()` | `useful-views check` | Report missing inputs, missing views, recipes never run, and stray files. Changes nothing. |
 | `root()` | none | Return the project root, for building paths in a notebook. |
+
+`run` and `sync` differ the way `uv run` and `uv sync` do: `run` does the one
+recipe you name, now; `sync` brings the whole project in line with its
+recipe folders.
+
+### What `run` does
+
+Before changing anything on disk, `run` checks the recipe and how it fits
+the project (see [Rules](#rules)). Then it:
+
+1. deletes the recipe's declared views and empties `work/<recipe>/`, so a
+   leftover file can never pass for a fresh result;
+2. runs each step in order. Their output appears as they run, in a terminal
+   or a notebook cell. The first step that fails stops the run;
+3. checks that every declared view was written as a non-empty parquet file;
+4. records the run: it rewrites `datapackage.json` and
+   `useful-views/README.md`. Only this recipe's entries change; every other
+   recipe's record is kept exactly as it was.
+
+If a step fails or a view is missing, nothing is recorded: the recipe's
+views are removed, and its record from the last successful run, if any, is
+kept. `check` then reports the views as missing, or the recipe as never run.
+The files in `work/<recipe>/` stay as the steps left them, so you can see how
+far the run got. Running the same recipe twice leaves `datapackage.json` and
+the catalog byte-for-byte unchanged.
+
+`run` never runs other recipes. If an input is another recipe's view, run
+that recipe first, or use `sync`.
+
+### What `sync` does
+
+`sync` makes the project match its recipe folders, the way `uv sync` makes
+an environment match its lock file. Records only ever come from real runs.
+
+1. It reads every recipe folder and works out the order. A malformed
+   `recipe.toml` or step file, a folder name that is not allowed, or recipes
+   that read each other's views in a circle stop it before anything changes.
+   A folder with no `recipe.toml` is skipped with a warning. The other
+   [rules](#rules) are checked as each recipe is about to run, so such a
+   refusal comes after the removals in step 2 and after the recipes before
+   it have run; those changes are kept, and the message says so.
+2. It removes the records of recipes whose folder was deleted, and any view a
+   recipe no longer lists in its outputs, along with those view files. It
+   warns about recipes that read a removed view.
+3. It runs, upstream first, every recipe that has never run, whose
+   `recipe.toml` or steps no longer match its record, or whose views are
+   missing, and everything downstream of those. `--all` (`all=True`) runs
+   every recipe. It stops at the first failure; recipes that ran before it
+   stay recorded.
+
+On a fresh clone, place the raw files and run `useful-views sync` to make
+every view. `sync` does not notice a change inside a step's code; after
+editing a step, `run` that recipe or use `sync --all`.
+
+### What `check` reports
+
+| Kind | Meaning |
+|---|---|
+| `unreadable-recipe` | A recipe folder whose `recipe.toml` is missing or cannot be read. |
+| `missing-input` | An input a `recipe.toml` declares is not on disk. |
+| `never-run` | A recipe folder that has never run successfully. |
+| `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. Run `sync`. |
+| `missing-view` | A recorded view whose file is missing. |
+| `stray-file` | A file or folder in `useful-views/`, other than `README.md`, that no recipe makes. |
+
+Each finding says what to do about it. `check` does not apply the
+[Rules](#rules) and does not notice changes to file contents or edited
+recipes, so a project can pass `check` and still have a recipe that `run`
+refuses or `sync` would run again.
+
+### Rules
+
+`run` refuses a recipe, before changing anything on disk, when:
+
+1. `recipe.toml` is missing or unreadable, lacks `description`, `inputs` or
+   `outputs`, has an empty list, lists a path twice, or its description
+   starts with TODO.
+2. The recipe has no step file; a step has no top comment, or one that starts
+   with TODO; or two steps share a number.
+3. A file in the recipe folder is named like a step but is an R, notebook,
+   Quarto, Julia or Stata file (`.R`, `.Rmd`, `.ipynb`, `.qmd`, `.jl`,
+   `.do`): steps must be `.py` files.
+4. An input is not a file under `raw/` or directly inside `useful-views/`, is
+   written in the wrong form, does not exist with exactly that letter case,
+   or is an empty or unreadable raw file.
+5. An input inside `useful-views/` is not made by another recipe that has
+   already run successfully.
+6. The recipe would create a cycle: it reads its own view, directly or
+   through a chain of other recipes.
+7. An output is not a `.parquet` file directly inside `useful-views/`, is
+   `useful-views/README.md`, or is already made by another recipe.
+8. Recording it would give two files the same resource name (the file name
+   without its extension, lowercased, with any character other than a-z,
+   0-9, `.`, `_` or `-` turned into `-`), such as `raw/data.csv` and
+   `useful-views/data.parquet`, or `raw/My Data.csv` and
+   `useful-views/my-data.parquet`.
+
+It also refuses a recipe name that does not match a folder in `recipes/`, or
+a folder name that is not allowed. Every refusal says what to fix and in
+which file. From Python, a refusal raises `RecipeRefused`, whose `rule` is
+the number above (or `None` for the name refusals) and whose `path` is the
+file to fix.
+
+### Using it from Python
+
+```python
+import useful_views as uvs
+
+uvs.run("pwt_panel")                 # works from any folder inside the project
+uvs.check(root="~/data/my-project")  # or name the project folder explicitly
+gdp = uvs.root() / "useful-views" / "gdp-per-capita.parquet"
+```
+
+- Every function except `init` finds the project by walking up from the
+  current folder to `datapackage.json`, so it works from a notebook in
+  `notebooks/`. All but `init` and `root` also take `root=`: the project
+  folder itself, the one holding `datapackage.json`.
+- `init` returns the project folder, `new_recipe` the recipe folder, `run` a
+  `RunResult` (`recipe`, `outputs`, `warnings`), `sync` a `SyncResult`
+  (`removed`, `dropped`, `deleted`, `ran`, `warnings`), and `check` a list of
+  findings (`kind`, `path`, `message`).
+- Failures raise subclasses of `UsefulViewsError`: `RecipeRefused`,
+  `StepFailed` (`step`, `returncode`, `stderr`), `OutputError` (`paths`),
+  `ProjectNotFound`, `ProjectError` and `ExampleError`. Warnings are
+  `UsefulViewsWarning`.
+- On the command line, the exit code is 0 for success, 1 when `check` finds
+  problems, 2 for a usage error, and 3 when an operation is refused or fails.
+  `useful-views --version` prints the version. `python -m useful_views ...`
+  works the same as `useful-views ...`, for example when the `useful-views`
+  command is not found.
+
+## Generated files
+
+**`datapackage.json`** is a [Data Package](https://datapackage.org/) that
+records what each recipe made from what. `frictionless validate
+datapackage.json` passes on it whenever every recorded file is present.
+
+- `resources` lists every raw file a recorded recipe read, then every view,
+  each with its columns and their types. A view also has `producedBy`: the
+  recipe that made it and that recipe's inputs.
+- `recipes` lists each recorded recipe with its description, inputs, outputs
+  and steps, as they were at its last successful run.
+- Column types come from the files themselves: a parquet file's own types,
+  and for a raw CSV, types inferred from the whole file. In a raw CSV only an
+  empty cell counts as missing, so a column that marks missing values with
+  `NA` or `.` is recorded as `string`. Other raw formats
+  (`.dta`, `.xlsx`, ...), and CSVs that are not plain comma-separated UTF-8,
+  are recorded without columns.
+- Never edit it by hand. If it is damaged, restore it from git.
+
+**`useful-views/README.md`** is a catalog generated from `datapackage.json`:
+for each view, the recipe's description, its inputs, its numbered steps, and
+its columns.
+
+**`.gitignore`** is written once by `init`, if there is none:
+
+```
+raw/*
+!raw/.gitkeep
+work/
+useful-views/*.parquet
+```
+
+So raw data, work files and views stay out of git, while `recipes/`,
+`datapackage.json` and the catalog are committed. A teammate places the raw
+files and runs `useful-views sync` to make the views again.
 
 ## Who writes what
 
-Humans write the project `README.md` and everything in `recipes/`. The
-package writes `datapackage.json`, `useful-views/README.md` and `.gitignore`.
-No file has two authors.
+Humans write the project `README.md` and everything in `recipes/`; `init`
+and `new-recipe` only start them from templates and never touch them again.
+The package writes `datapackage.json` and `useful-views/README.md`; never edit
+those by hand. `init` writes `.gitignore` once, if there is none; after that
+it is yours. So no file has two authors at the same time.
 
 ## Not yet
 
-- Hashing, and with it detecting that an input, recipe or view has changed.
-- R steps. The group uses both R and Python; the layout is designed so an R
-  step is one more file in a recipe folder.
+- Hashing, planned for a future release: detecting that an input, recipe or
+  view has changed, reporting a view as stale, and `sync` noticing a change
+  inside a step's code.
 - An upper limit on the size of a step.
+- Recording where a raw file came from and how to fetch it again.
+- Subfolders inside `useful-views/`, and notebooks as steps.
 - Cookbooks. A cookbook is a named collection of recipes whose views together
   form one cohesive set of data products, such as the data behind one paper or
   one dashboard. Cookbooks are written by humans in `cookbook.json` at the
@@ -200,3 +426,8 @@ No file has two authors.
   either rule. `useful-views sync --cookbook pwt-growth` would run just
   these recipes, and the catalog would group the views by cookbook.
 
+## License
+
+useful-views is released under the MIT License; see `LICENSE`. The example
+data is an extract of the Penn World Table, licensed CC BY 4.0; the example's
+`README.md` gives the citation.

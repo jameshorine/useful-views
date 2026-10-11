@@ -1,5 +1,6 @@
-"""SPEC section 14: build the reference project from an empty folder using
-only the public functions, the raw file and the reference recipes."""
+"""Build the reference project from an empty folder using only the public
+functions, the raw file and the reference recipes, and compare the result
+with reference/."""
 
 from __future__ import annotations
 

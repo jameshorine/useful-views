@@ -1,12 +1,11 @@
-"""SPEC section 10, rules 1 to 8, and the extra pre-run refusals of section 17.
+"""Rules 1 to 8 (under "Rules" in the README) and the refusals of the recipe name.
 
 Every refusal is checked the same way, through both the API and the CLI:
 
 - the run fails (exit code 3 on the command line);
 - through the API it raises `RecipeRefused` with the rule number (or None for
-  a refusal that section 17 adds without a rule) and `.path` naming the file
-  to fix;
-- the message names the file to fix (rule 18);
+  a refusal without a rule number) and `.path` naming the file to fix;
+- the message names the file to fix;
 - nothing on disk changed, not even work/ or a leftover view ("before a run,
   and before anything is changed on disk").
 """
@@ -69,8 +68,8 @@ def make_recipe(root: Path, name: str = "a", *, inputs=(RAW,), outputs=(VIEW,), 
 
 
 def seed_leftovers(root: Path, name: str = "a", outputs=(VIEW,)) -> None:
-    """Old work files and old views: a refused run must not delete them (rule 9
-    happens only after rules 1 to 8 pass)."""
+    """Old work files and old views: a refused run must not delete them (they
+    are cleared only after rules 1 to 8 pass)."""
     write(root, f"work/{name}/leftover.txt", "old work file\n")
     for rel in outputs:
         target = root / rel
@@ -429,7 +428,7 @@ def test_rule4_unreadable_raw_parquet(driver, project):
                    mentions=["raw/broken.parquet"])
 
 
-# Path forms (section 17): refused, with the corrected string where there is one.
+# Path forms: refused, with the corrected string where there is one.
 
 INPUT_FORMS = [
     ("./raw/data.csv", "raw/data.csv"),
@@ -827,7 +826,7 @@ def test_unreadable_other_recipe_toml_does_not_block_rule5_via_records(driver, p
             assert isinstance(out.error, uvs.RecipeRefused)
 
 
-# --- section 17: which recipe to run ------------------------------------------
+# --- which recipe to run ------------------------------------------------------
 
 
 def test_unknown_recipe(driver, project):

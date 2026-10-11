@@ -1,25 +1,28 @@
-# Reference project: Penn World Table example
+# Penn World Table example
 
-This folder is a complete `useful-views` project. The package's tests rebuild
-it from `raw/` and `recipes/` and compare the result with the files here.
+A complete [useful-views](https://github.com/jameshorine/useful-views)
+project: raw data and two recipes, ready to run. Get a copy with
+`useful-views example pwt`, then make its views with:
+
+```sh
+useful-views sync
+```
 
 ## Data source and credit
 
 `raw/pwt110_bra_deu_esp_usa.csv` is an extract of the Penn World Table,
 version 11.0: all variables and all years (1950 to 2023) for Brazil, Germany,
 Spain and the United States. It was exported on 2026-10-09 from the PWT
-online data access tool:
+online data access tool, and is unchanged apart from its name:
 
 https://pwt-data-tool.streamlit.app/?page=Thematic+select&countries=USA%2CDEU%2CESP%2CBRA&variables=All&years=All
-
-The file is unchanged apart from its name.
 
 The Penn World Table is licensed under a Creative Commons Attribution 4.0
 International License. Please cite:
 
 > Feenstra, Robert C., Robert Inklaar and Marcel P. Timmer (2015), "The Next
 > Generation of the Penn World Table." American Economic Review, 105(10),
-> 3150-3182.
+> 3150-3182. https://doi.org/10.1257/aer.20130954
 
 ## Recipes
 
@@ -29,4 +32,6 @@ International License. Please cite:
   annual growth, and its level relative to the United States:
   `useful-views/gdp-per-capita.parquet`.
 
-`useful-views/README.md` is the generated catalog of both views.
+The steps use polars, so install it in the same environment as useful-views.
+Once the recipes have run, `useful-views/README.md` is the generated catalog
+of both views.
