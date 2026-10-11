@@ -674,7 +674,7 @@ def test_everything_works_from_a_subfolder(sub_driver, project):
 
     out = sub_driver.check()
     assert out.ok
-    assert "never-run" in out.kinds
+    assert "refused" in out.kinds  # the untouched template would be refused
 
     # The step writes with plain relative paths, so this also proves it runs
     # with the project root as its working directory.

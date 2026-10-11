@@ -1,4 +1,7 @@
-# Quickstart
+---
+title: "Quickstart"
+guide-section: Get started
+---
 
 This walkthrough starts from a ready-made example project, runs its recipes,
 and then adds a recipe of your own: once in Python, as you would in a

@@ -1,0 +1,76 @@
+# Great Docs configuration for useful-views.
+# Build the site with:   uv run --group docs great-docs build
+# Preview it with:       uv run --group docs great-docs preview
+# Pages in docs/reference/cli.md, rules.md and check-findings.md are generated:
+#   uv run python scripts/generate_docs.py
+# See https://posit-dev.github.io/great-docs/ for every option.
+
+display_name: useful-views
+parser: google
+dynamic: true
+repo: https://github.com/jameshorine/useful-views
+site_url: https://jameshorine.github.io/useful-views/
+
+# The user guide is docs/. Each page names its sidebar section in its front
+# matter (guide-section); pages are ordered by path: docs/ first, then
+# concepts/, guides/ and reference/.
+user_guide: docs
+
+reference:
+  - title: Functions
+    desc: Create a project, run its recipes, and report its state.
+    contents:
+      - init
+      - example
+      - new_recipe
+      - run
+      - sync
+      - check
+      - root
+  - title: Results
+    desc: What run, sync and check return.
+    contents:
+      - RunResult
+      - SyncResult
+      - Finding
+  - title: Errors and warnings
+    desc: Every error is a UsefulViewsError and carries its facts as attributes and to_dict().
+    contents:
+      - UsefulViewsError
+      - RecipeRefused
+      - StepFailed
+      - OutputError
+      - ProjectError
+      - ProjectNotFound
+      - ExampleError
+      - UsefulViewsWarning
+  - title: Rules
+    desc: The numbered rules a recipe must follow.
+    contents:
+      - RULES
+      - Rule
+
+skill:
+  enabled: true
+  gotchas:
+    - "Never edit datapackage.json or useful-views/README.md; useful-views writes them after each successful run."
+    - "sync does not notice edits inside a step's code; after such an edit use `useful-views sync --all`."
+    - "Paths in recipe.toml are relative to the project root, use forward slashes, and must be the same strings the step code uses."
+    - "Steps run from the project root with the same Python as useful-views; their libraries must be installed there."
+    - "A view used as an input must be an output of another recipe; work/<recipe>/ files are private to their recipe."
+  best_practices:
+    - "Start with `useful-views check --json`: it lists every refusal and every recipe sync would run."
+    - "Use `useful-views sync` to build; it refuses before changing anything and lists every problem at once."
+    - "Use `--json` and `-C <path>` when scripting; standard output then carries exactly one JSON document."
+    - "Create recipes with `useful-views new-recipe <name>` and replace every TODO."
+  decision_table:
+    - need: "See what is wrong, or what sync would do"
+      use: "useful-views check --json"
+    - need: "Build everything that is missing or changed"
+      use: "useful-views sync"
+    - need: "Rebuild everything after editing step code"
+      use: "useful-views sync --all"
+    - need: "Run one recipe"
+      use: "useful-views run <recipe>"
+    - need: "List the rules"
+      use: "useful-views rules"

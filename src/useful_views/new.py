@@ -12,8 +12,24 @@ from .record import write_atomic
 
 
 def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
-    """Create recipes/<name>/ with a template recipe.toml and one stub step.
-    Returns the new folder."""
+    """Create `recipes/<name>/` with a template `recipe.toml` and a stub step.
+
+    Both files say TODO and explain what to fill in. Until you replace the
+    TODOs, `run` and `sync` refuse the recipe (rules 1 and 2), and `check`
+    reports it as refused.
+
+    Args:
+        name: Lowercase letters, digits and underscores, like `"pwt_panel"`.
+        root: The project folder. By default it is found by walking up from
+            the current folder to `datapackage.json`.
+
+    Returns:
+        The new recipe folder.
+
+    Raises:
+        RecipeRefused: The name is not allowed, or the folder already exists.
+        ProjectNotFound: No project was found.
+    """
     project = find_root(root)
     if not RECIPE_NAME.fullmatch(name):
         raise RecipeRefused(

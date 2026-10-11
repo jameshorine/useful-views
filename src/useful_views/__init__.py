@@ -16,6 +16,7 @@ from .errors import (
 from .examples import ExampleError, example
 from .new import new_recipe
 from .project import init, root
+from .rulebook import RULES, Rule
 from .runner import RunResult, run
 from .syncing import SyncResult, sync
 
@@ -30,7 +31,9 @@ __all__ = [
     "OutputError",
     "ProjectError",
     "ProjectNotFound",
+    "RULES",
     "RecipeRefused",
+    "Rule",
     "RunResult",
     "StepFailed",
     "SyncResult",

@@ -112,7 +112,10 @@ class CliDriver:
         if args and args[0] == "check":
             out.ok = proc.returncode in (0, 1)
             if proc.returncode == 1:
-                out.kinds = [line.split(":", 1)[0] for line in proc.stdout.splitlines() if ":" in line]
+                from useful_views.status import KINDS
+
+                out.kinds = [line.split(":", 1)[0] for line in proc.stdout.splitlines()
+                             if line.split(":", 1)[0] in KINDS]
         return out
 
     def init(self, path: str = ".") -> Outcome:

@@ -61,11 +61,27 @@ def _download(url: str) -> bytes:
 
 
 def example(name: str, path: str | Path | None = None) -> Path:
-    """Create a ready-to-run example project at `path` (default: '<name>-example').
+    """Download a ready-to-run example project.
 
-    The raw data and recipes are downloaded and checked against their
-    SHA-256, then the folder is set up like `init` does. Run its recipes
-    with `useful-views sync`. Returns the project folder.
+    The example's raw data and recipes come from the useful-views-data
+    repository, at the version this release of useful-views pins, and each
+    file is checked against its SHA-256 before anything is written. The
+    folder is then set up like `init` does. Make its views with
+    `useful-views sync`.
+
+    Args:
+        name: The example, such as `"pwt"` (Penn World Table extract).
+        path: The folder to create; default `"<name>-example"`. It must not
+            exist, or be empty.
+
+    Returns:
+        The project folder, as an absolute path.
+
+    Raises:
+        ExampleError: The name is unknown, the folder is not empty, a file
+            could not be downloaded, or a checksum did not match. Nothing is
+            written in those cases.
+        ProjectError: The folder is inside another project.
     """
     if name not in EXAMPLES:
         listing = "; ".join(f"{n}: {e['description']}" for n, e in EXAMPLES.items())

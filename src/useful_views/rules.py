@@ -7,7 +7,8 @@ declares now, and what its record in datapackage.json says it made.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pyarrow as pa
@@ -39,11 +40,12 @@ class Others:
     records: dict[str, dict]  # name -> record from datapackage.json
     folders: set[str]  # recipe folders on disk
     unreadable: set[str]  # recipe folders whose recipe.toml could not be read
+    missing_toml: set[str] = field(default_factory=set)  # recipe folders with no recipe.toml at all
 
 
 def gather_others(root: Path, data: dict, own: str, collected: list[str]) -> Others:
     declared = {}
-    folders, unreadable = set(), set()
+    folders, unreadable, missing_toml = set(), set(), set()
     for name in listdir(root / RECIPES):
         if not (root / RECIPES / name).is_dir():
             continue
@@ -57,6 +59,7 @@ def gather_others(root: Path, data: dict, own: str, collected: list[str]) -> Oth
         if not has_toml:
             warn(f"{RECIPES}/{name}/ has no recipe.toml, so it is not treated as a recipe.", collected)
             unreadable.add(name)
+            missing_toml.add(name)
             continue
         try:
             parsed = read_declaration(root, name)
@@ -66,13 +69,19 @@ def gather_others(root: Path, data: dict, own: str, collected: list[str]) -> Oth
             continue
         declared[name] = (declared_paths(parsed, "inputs"), declared_paths(parsed, "outputs"))
     records = {r["name"]: r for r in data["recipes"] if r["name"] != own}
-    return Others(declared=declared, records=records, folders=folders, unreadable=unreadable)
+    return Others(declared=declared, records=records, folders=folders, unreadable=unreadable,
+                  missing_toml=missing_toml)
 
 
 def recorded_maker_problem(others: Others, holder: str) -> str:
     """Why a record claims a view its recipe no longer declares, and the fix."""
     if holder not in others.folders:
-        return f"That recipe's folder no longer exists; run useful-views sync, then try again."
+        return "That recipe's folder no longer exists; run useful-views sync, then try again."
+    if holder in others.missing_toml:
+        return (
+            f"{RECIPES}/{holder}/ has no recipe.toml. Restore it, or delete the folder and run useful-views sync, "
+            "then try again."
+        )
     if holder in others.unreadable:
         return f"{RECIPES}/{holder}/recipe.toml cannot be read; fix that file first."
     return (
@@ -93,8 +102,9 @@ def self_read(recipe: Recipe, rel: str) -> bool:
     return rel in recipe.outputs and bool(VIEW_PATH.match(rel))
 
 
-def check_inputs(root: Path, recipe: Recipe, others: Others) -> None:
-    """Rules 4 and 5."""
+def check_inputs(root: Path, recipe: Recipe, others: Others, will_run: frozenset[str] = frozenset()) -> None:
+    """Rules 4 and 5. `will_run` names recipes that run before this one (in a
+    sync), so a view they make need not exist or be recorded yet."""
     toml = f"{recipe.path}/recipe.toml"
     for rel in recipe.inputs:
         problem = path_problem(rel, root)
@@ -111,7 +121,9 @@ def check_inputs(root: Path, recipe: Recipe, others: Others) -> None:
         if self_read(recipe, rel):
             continue
         if not in_raw:
-            check_view_input(recipe, rel, others)
+            check_view_input(recipe, rel, others, will_run)
+            if set(producers(others, rel)[0]) & will_run:
+                continue  # its maker runs first and will write it
         try:
             present = exists_exact(root, rel)
         except UnreadableFolder as exc:
@@ -129,7 +141,9 @@ def check_inputs(root: Path, recipe: Recipe, others: Others) -> None:
             else:
                 maker = producers(others, rel)[0][0]
                 hint = f" Run the recipe that makes it first: useful-views run {maker}"
-            raise RecipeRefused(f"Input {rel!r} declared in {toml} does not exist.{hint}", rule=4, path=toml)
+            refusal = RecipeRefused(f"Input {rel!r} declared in {toml} does not exist.{hint}", rule=4, path=toml)
+            refusal.missing_input = rel
+            raise refusal
         if not (root / rel).is_file():
             raise RecipeRefused(
                 f"Input {rel!r} declared in {toml} is a folder, not a file. Name a file inside it.",
@@ -142,9 +156,37 @@ def check_inputs(root: Path, recipe: Recipe, others: Others) -> None:
                 rule=4,
                 path=toml,
             )
+        if in_raw:
+            check_raw_readable(root, rel, toml)
 
 
-def check_view_input(recipe: Recipe, rel: str, others: Others) -> None:
+def check_raw_readable(root: Path, rel: str, toml: str) -> None:
+    """A raw input can be opened, and a parquet one looks like parquet (it
+    starts and ends with the bytes PAR1). Reads at most 8 bytes."""
+    path = root / rel
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4)
+            if rel.lower().endswith(".parquet"):
+                f.seek(-4, os.SEEK_END)
+                tail = f.read(4)
+                if head != b"PAR1" or tail != b"PAR1":
+                    raise RecipeRefused(
+                        f"Raw input {rel!r} declared in {toml} is not a valid parquet file. Replace it with a "
+                        "valid parquet file, or correct the path.",
+                        rule=4,
+                        path=rel,
+                    )
+    except OSError as exc:
+        raise RecipeRefused(
+            f"Raw input {rel!r} declared in {toml} cannot be opened ({exc.strerror or exc}). Fix its "
+            "permissions, or close the program that has it locked.",
+            rule=4,
+            path=rel,
+        ) from exc
+
+
+def check_view_input(recipe: Recipe, rel: str, others: Others, will_run: frozenset[str] = frozenset()) -> None:
     """Rule 5: a view used as input is declared, and recorded, by its maker."""
     toml = f"{recipe.path}/recipe.toml"
     by_toml, by_record = producers(others, rel)
@@ -165,7 +207,7 @@ def check_view_input(recipe: Recipe, rel: str, others: Others) -> None:
             rule=5,
             path=toml,
         )
-    if not any(n in by_record for n in by_toml):
+    if not any(n in by_record or n in will_run for n in by_toml):
         maker = by_toml[0]
         raise RecipeRefused(
             f"Input {rel!r} declared in {toml} is made by {RECIPES}/{maker}, which has not run "
@@ -283,20 +325,24 @@ def check_outputs(root: Path, recipe: Recipe, others: Others) -> None:
 
 def check_names(recipe: Recipe, others: Others) -> None:
     """Rule 8: after recording, no two resources share a name."""
-    paths = set(recipe.outputs) | {p for p in recipe.inputs if p.startswith(f"{RAW}/")}
+    own = set(recipe.outputs) | {p for p in recipe.inputs if p.startswith(f"{RAW}/")}
+    paths = set(own)
     for record in others.records.values():
         paths |= set(record["outputs"]) | set(raw_inputs(record))
-    by_name: dict[str, str] = {}
+    by_name: dict[str, list[str]] = {}
     for rel in sorted(paths):
-        name = resource_name(rel)
-        if name in by_name:
+        by_name.setdefault(resource_name(rel), []).append(rel)
+    for name, clash in sorted(by_name.items()):
+        if len(clash) > 1 and own & set(clash):  # a clash between other recipes is not this one's doing
+            mine = sorted(own & set(clash))[0]
+            other = next(p for p in clash if p != mine)
             raise RecipeRefused(
                 f"Recording {recipe.path} would give two files the same resource name {name!r}: "
-                f"{by_name[name]} and {rel}. Rename one of them so their names differ before the extension.",
+                f"{min(mine, other)} and {max(mine, other)}. Rename one of them so their names differ before "
+                "the extension.",
                 rule=8,
                 path=f"{recipe.path}/recipe.toml",
             )
-        by_name[name] = rel
 
 
 def describe_inputs(root: Path, recipe: Recipe) -> dict[str, dict]:
@@ -322,6 +368,16 @@ def describe_inputs(root: Path, recipe: Recipe) -> dict[str, dict]:
                 path=rel,
             ) from exc
     return described
+
+
+def check_static(root: Path, recipe: Recipe, others: Others, will_run: frozenset[str] = frozenset()) -> None:
+    """Rules 4 to 8 without reading raw data (at most a few bytes of each raw
+    parquet), against `others`, which may describe the records as they will be
+    when this recipe runs in a sync."""
+    check_cycle(recipe, others)
+    check_inputs(root, recipe, others, will_run)
+    check_outputs(root, recipe, others)
+    check_names(recipe, others)
 
 
 def check_all(root: Path, recipe: Recipe, data: dict, collected: list[str]) -> tuple[Others, dict[str, dict]]:

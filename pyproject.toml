@@ -24,7 +24,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/jameshorine/useful-views"
-Documentation = "https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md"
+Documentation = "https://jameshorine.github.io/useful-views/"
 Issues = "https://github.com/jameshorine/useful-views/issues"
 
 [project.scripts]
@@ -36,6 +36,9 @@ dev = [
     "pytest-xdist>=3",
     "polars>=1.20",
     "frictionless[pandas]>=5.18,<6",
+]
+docs = [
+    "great-docs>=0.17,<0.18",
 ]
 
 [build-system]

@@ -324,11 +324,14 @@ def write_files(files: dict[Path, str]) -> None:
     replaced: dict[Path, bytes | None] = {}
     try:
         for path, text in files.items():
+            data = text.encode("utf-8")
+            if path.is_file() and path.read_bytes() == data:
+                continue  # unchanged: leave the file, and its timestamp, alone
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = _temp_for(path)
             temps[path] = tmp
             with open(tmp, "wb") as f:
-                f.write(text.encode("utf-8"))
+                f.write(data)
         for path, tmp in temps.items():
             previous = path.read_bytes() if path.exists() else None
             retry(lambda: os.replace(tmp, path), path)

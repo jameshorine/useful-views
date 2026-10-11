@@ -44,8 +44,10 @@ from conftest import (
 
 KIND_ORDER = [
     "unreadable-recipe",
+    "refused",
     "missing-input",
     "never-run",
+    "out-of-date",
     "missing-recipe-folder",
     "missing-view",
     "stray-file",
@@ -122,6 +124,7 @@ def test_check_returns_findings_with_kind_path_message(project):
 # --- check: unreadable-recipe ----------------------------------------------
 
 
+@pytest.mark.filterwarnings("ignore:.*has no recipe.toml")
 def test_missing_recipe_toml_is_reported(driver, project):
     write(project, "recipes/no_toml/01_step.py", "# A step without a recipe.\nprint('hi')\n")
     out = driver.check()
@@ -158,11 +161,14 @@ def test_unreadable_recipe_is_not_also_never_run(project):
     assert [f.kind for f in findings(project)] == ["unreadable-recipe"]
 
 
-def test_template_recipe_is_readable_and_never_run(driver, project):
-    """A fresh new_recipe template is readable TOML; check does not apply rule 1."""
+def test_untouched_template_is_reported_as_refused(driver, project):
+    """A fresh new_recipe template is readable TOML, but run and sync would
+    refuse it under rule 1, so check reports that rather than "never run"."""
     assert driver.new_recipe("fresh").ok
     out = driver.check()
-    assert out.kinds == ["never-run"]
+    assert out.kinds == ["refused"]
+    if isinstance(driver, ApiDriver):
+        assert out.value[0].rule == 1 and out.value[0].recipe == "fresh"
 
 
 def test_hidden_and_clutter_folders_in_recipes_are_ignored(driver, project):
@@ -196,7 +202,8 @@ def test_missing_input_comes_from_current_recipe_toml(driver, project):
     write_recipe(project, "alpha", inputs=["raw/alpha_src.csv", "raw/new_input.csv"],
                  outputs=["useful-views/alpha.parquet"])
     out = driver.check()
-    assert out.kinds == ["missing-input"]
+    # The edited recipe.toml no longer matches the record, so it is also out of date.
+    assert out.kinds == ["missing-input", "out-of-date"]
     assert one(project, "missing-input").path == "raw/new_input.csv"
 
 
@@ -264,6 +271,7 @@ def test_deleted_recipe_folder_is_reported(driver, project):
     assert "sync" in f.message
 
 
+@pytest.mark.filterwarnings("ignore:.*has no recipe.toml")
 def test_recorded_folder_with_toml_removed_is_unreadable_not_missing(project):
     """The folder still exists, so it is not a missing recipe folder."""
     recorded_project(project)
@@ -300,7 +308,8 @@ def test_failed_run_leaves_views_missing_and_check_reports_them(driver, project)
     assert not (project / "useful-views" / "alpha.parquet").exists()
     out = driver.check()
     assert out.exit_code == 1
-    assert out.kinds == ["missing-view"]
+    # The step changed since the last successful run, and its view is gone.
+    assert out.kinds == ["out-of-date", "missing-view"]
     assert one(project, "missing-view").path == "useful-views/alpha.parquet"
 
 
@@ -401,12 +410,19 @@ def build_every_kind(root: Path) -> None:
     recorded_project(root, "lost", "useful-views/lost.parquet", "raw/lost_src.csv")
     shutil.rmtree(root / "recipes" / "gone")
     (root / "useful-views" / "lost.parquet").unlink()
-    # unreadable-recipe.
-    write(root, "recipes/broken/recipe.toml", "not = = toml\n")
     # missing-input and never-run.
     write_recipe(root, "waiting", inputs=["raw/absent.csv"], outputs=["useful-views/waiting.parquet"])
     # stray-file.
     write(root, "useful-views/extra.parquet", "x")
+    # refused: an output outside useful-views/ (rule 7).
+    write_recipe(root, "wrong", inputs=["raw/lost_src.csv"], outputs=["work/wrong.parquet"])
+    # out-of-date: recorded, then its description edited.
+    recorded_project(root, "edited", "useful-views/edited.parquet", "raw/edited_src.csv")
+    write(root, "recipes/edited/recipe.toml",
+          'description = "Edited since its last run."\ninputs = ["raw/edited_src.csv"]\n'
+          'outputs = ["useful-views/edited.parquet"]\n')
+    # unreadable-recipe (last, so the runs above do not warn about it).
+    write(root, "recipes/broken/recipe.toml", "not = = toml\n")
 
 
 def test_every_kind_in_fixed_order(driver, project):
@@ -433,10 +449,14 @@ def test_order_does_not_depend_on_creation_order(project):
 def test_api_and_cli_report_the_same_findings_in_the_same_order(project):
     build_every_kind(project)
     write(project, "useful-views/another.parquet", "x")
-    api = [f"{f.kind}: {f.message}" for f in uvs.check(root=project)]
+    api = [f"{f.kind}: {f.message.splitlines()[0]}" for f in uvs.check(root=project)]
     cli = CliDriver(project).check()
     assert cli.exit_code == 1
-    assert [line for line in cli.stdout.splitlines() if line.strip()] == api
+    from useful_views.status import KINDS
+
+    printed = [line for line in cli.stdout.splitlines() if line.split(":", 1)[0] in KINDS]
+    assert printed == api
+    assert cli.stdout.rstrip().endswith("run useful-views sync.")
 
 
 def test_cli_exit_codes(project):
@@ -477,14 +497,18 @@ def test_check_works_from_a_subfolder(project):
         assert out.kinds == ["stray-file"], drv.name
 
 
-def test_check_does_not_apply_run_rules(driver, project):
-    """check() does not apply rules 1 to 8: a TODO description, a missing
-    step or a non-Python step are not check findings."""
+def test_check_reports_what_run_would_refuse(driver, project):
+    """check() applies the rules: a recipe run would refuse is reported as
+    refused, with its rule number, instead of as never run."""
     write(project, "recipes/todo/recipe.toml",
           'description = "TODO: later."\ninputs = ["raw/a.csv"]\noutputs = ["useful-views/todo.parquet"]\n')
     add_raw_csv(project, "raw/a.csv")
     write(project, "recipes/todo/02_clean.R", "# R step\n")
-    assert driver.check().kinds == ["never-run"]
+    out = driver.check()
+    assert out.kinds == ["refused"]
+    assert "recipes/todo/recipe.toml" in (out.stdout or out.value[0].message)
+    if isinstance(driver, ApiDriver):
+        assert out.value[0].rule == 1
 
 
 # --- sync -------------------------------------------------------------------
@@ -749,7 +773,9 @@ def test_rename_recipe_folder_then_sync(driver, project):
     assert driver.run("gdp_per_capita").ok
 
     os.rename(project / "recipes" / "pwt_panel", project / "recipes" / "panel")
-    assert driver.check().kinds == ["never-run", "missing-recipe-folder"]
+    # panel has never run; gdp_per_capita will run again after it (its input is
+    # made again); the old pwt_panel record has no folder.
+    assert driver.check().kinds == ["never-run", "out-of-date", "missing-recipe-folder"]
 
     # Running the renamed recipe alone is refused, pointing to sync.
     before = snapshot(project)
@@ -819,7 +845,8 @@ def test_failed_run_inside_sync_says_what_sync_already_changed(project):
                  steps={"01_fail.py": FAILING_STEP})
     with pytest.raises(uvs.StepFailed) as err:
         uvs.sync(root=project)
-    assert "sync had already removed records" in str(err.value)
+    assert "sync had already removed the records" in str(err.value)
+    assert err.value.sync_result is not None and err.value.sync_result.removed == ("gone",)
     assert err.value.step == "recipes/bad/01_fail.py"
 
 

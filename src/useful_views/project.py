@@ -58,7 +58,20 @@ def find_root(root: str | Path | None = None) -> Path:
 
 
 def root() -> Path:
-    """Return the project root, so a notebook can build paths to views."""
+    """The project folder, found from the current folder.
+
+    Walks up from the current folder to the nearest `datapackage.json` that
+    useful-views wrote, so it works from a notebook in `notebooks/`. Use it
+    to build paths to views and read them with any library:
+
+        gdp = pl.read_parquet(uvs.root() / "useful-views" / "gdp-per-capita.parquet")
+
+    Returns:
+        The project folder, as an absolute path.
+
+    Raises:
+        ProjectNotFound: The current folder is not inside a project.
+    """
     return find_root()
 
 
@@ -76,8 +89,24 @@ def check_not_nested(folder: Path) -> None:
 
 
 def init(path: str | Path = ".") -> Path:
-    """Create the project structure at `path`. Safe to run twice; never
-    overwrites a file. Returns the project root."""
+    """Create the project structure at `path`.
+
+    Creates `raw/`, `recipes/`, `work/` and `useful-views/`, a starter
+    `README.md`, a `.gitignore` that keeps raw data, work files and views out
+    of git, and an empty `datapackage.json` and catalog. Safe to run twice:
+    it never overwrites a file, and warns if an existing `.gitignore` lacks
+    a line it would have written.
+
+    Args:
+        path: The project folder. Created, with its parents, if missing.
+
+    Returns:
+        The project folder, as an absolute path.
+
+    Raises:
+        ProjectError: `path` is inside another project, is a file, or holds a
+            `datapackage.json` that useful-views did not write.
+    """
     folder = Path(path).expanduser().resolve()
     check_not_nested(folder)
     if folder.exists() and not folder.is_dir():

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pyarrow as pa
 
-from .errors import OutputError, ProjectError, StepFailed
+from .errors import OutputError, ProjectError, RecipeRefused, StepFailed
 from .paths import CATALOG, DATAPACKAGE, VIEWS, WORK, exists_exact
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
@@ -39,15 +39,28 @@ PACKAGE_FOR_MODULE = {
 
 @dataclass(frozen=True)
 class RunResult:
+    """What `run` did.
+
+    Attributes:
+        recipe: The recipe that ran.
+        outputs: The views it wrote, as paths from the project root.
+        warnings: Warnings issued along the way (also shown as they happen).
+    """
+
     recipe: str
     outputs: tuple[str, ...]
     warnings: tuple[str, ...]
 
+    def to_dict(self) -> dict:
+        return {"recipe": self.recipe, "outputs": list(self.outputs), "warnings": list(self.warnings)}
 
-def _write(sink_name: str, text: str) -> None:
+
+def _write(sink, text: str) -> None:
     """Best effort: a stream that cannot take the text must never stop the
-    relay, or the step would block on a full pipe."""
-    sink = getattr(sys, sink_name)
+    relay, or the step would block on a full pipe. `sink` is a stream, or the
+    name of one in sys ("stdout", "stderr"), looked up now."""
+    if isinstance(sink, str):
+        sink = getattr(sys, sink)
     if sink is None or not text:
         return
     try:
@@ -66,7 +79,7 @@ def _write(sink_name: str, text: str) -> None:
         pass
 
 
-def _relay(stream, sink_name: str, keep: list[bytes] | None) -> None:
+def _relay(stream, sink, keep: list[bytes] | None) -> None:
     """Copy a child's output to our sys.stdout/sys.stderr as it arrives, so it
     shows in a terminal and in a notebook cell alike."""
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -74,8 +87,8 @@ def _relay(stream, sink_name: str, keep: list[bytes] | None) -> None:
         while chunk := stream.read1(65536):
             if keep is not None:
                 keep.append(chunk)
-            _write(sink_name, decoder.decode(chunk))
-        _write(sink_name, decoder.decode(b"", final=True))
+            _write(sink, decoder.decode(chunk))
+        _write(sink, decoder.decode(b"", final=True))
     except (ValueError, OSError):
         pass  # the pipe was closed under us after the step ended
 
@@ -93,8 +106,10 @@ def run_step(root: Path, step: Step) -> tuple[int, str]:
     )
     err: list[bytes] = []
     threads = [
-        threading.Thread(target=_relay, args=(proc.stdout, "stdout", None), daemon=True),
-        threading.Thread(target=_relay, args=(proc.stderr, "stderr", err), daemon=True),
+        # The streams are chosen now, so output from a process the step leaves
+        # running never lands somewhere a later caller redirected stdout to.
+        threading.Thread(target=_relay, args=(proc.stdout, sys.stdout, None), daemon=True),
+        threading.Thread(target=_relay, args=(proc.stderr, sys.stderr, err), daemon=True),
     ]
     for t in threads:
         t.start()
@@ -169,7 +184,7 @@ def _empty_work(root: Path, name: str) -> None:
         ) from exc
 
 
-def _step_failure(step: Step, code: int, stderr: str) -> StepFailed:
+def _step_failure(step: Step, code: int, stderr: str, recipe: str) -> StepFailed:
     tail = "\n".join(stderr.rstrip("\n").split("\n")[-STDERR_TAIL:]) if stderr.strip() else "(no error output)"
     message = (
         f"Step {step.path} failed with exit code {code}. Fix the problem in that file and run the recipe again.\n"
@@ -190,7 +205,7 @@ def _step_failure(step: Step, code: int, stderr: str) -> StepFailed:
             f"  {sys.executable} -m pip install {package}\n"
             f"  uv pip install --python {sys.executable} {package}"
         )
-    return StepFailed(message, step=step.path, returncode=code, stderr=stderr)
+    return StepFailed(message, step=step.path, returncode=code, stderr=stderr, recipe=recipe)
 
 
 def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
@@ -216,21 +231,52 @@ def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
             + f"\nMake the steps write each output listed in {loaded.path}/recipe.toml, exactly as written there. "
             f"Nothing was recorded: {DATAPACKAGE} and {CATALOG} are unchanged, and this recipe's views were removed.",
             paths=[rel for rel, _ in bad],
+            problems=bad,
+            recipe=name,
         )
     return views
 
 
 def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
-    """Run one recipe's steps in order and record what it produced."""
+    """Run one recipe's steps in order and record what it produced.
+
+    Before anything on disk changes, the recipe is checked against the rules
+    (`useful-views rules`). Then its views are deleted and `work/<recipe>/`
+    is emptied, each step runs as its own process (from the project root,
+    with this Python, its output shown as it runs), every declared view must
+    have been written, and the run is recorded in `datapackage.json` and
+    `useful-views/README.md`. Other recipes' records are not changed, and no
+    other recipe is run.
+
+    Args:
+        recipe: The recipe's name, as in `"pwt_panel"` or `"recipes/pwt_panel/"`.
+        root: The project folder. By default it is found by walking up from
+            the current folder to `datapackage.json`.
+
+    Returns:
+        A `RunResult` naming the views written.
+
+    Raises:
+        RecipeRefused: The recipe breaks a rule; nothing changed.
+        StepFailed: A step failed; nothing was recorded and the recipe's views
+            were removed.
+        OutputError: A declared view was missing, empty or unreadable after
+            the steps ran; nothing was recorded.
+        ProjectNotFound: No project was found.
+    """
     project = find_root(root)
     collected: list[str] = []
 
     # Before anything on disk changes: rules 1 to 8.
     name = resolve_name(project, recipe)
-    loaded = load_recipe(project, name)
-    collected.extend(loaded.warnings)
-    data = load_datapackage(project)
-    _, raw_described = check_all(project, loaded, data, collected)
+    try:
+        loaded = load_recipe(project, name)
+        collected.extend(loaded.warnings)
+        data = load_datapackage(project)
+        _, raw_described = check_all(project, loaded, data, collected)
+    except RecipeRefused as exc:
+        exc.recipe = exc.recipe or name
+        raise
 
     # 1. Clear the old views and work files: a leftover can never pass for a fresh result.
     _remove_outputs(project, loaded.outputs)
@@ -242,7 +288,7 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
         for step in loaded.steps:
             code, stderr = run_step(project, step)
             if code != 0:
-                raise _step_failure(step, code, stderr)
+                raise _step_failure(step, code, stderr, name)
 
         # 3. Every declared view must have been written.
         views = _check_outputs(project, name, loaded)
