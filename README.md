@@ -1,9 +1,10 @@
 # useful-views
 
-`useful-views` is a small agent-in-the-loop Python package that gives a data project a fixed
-structure, so that every derived table (a "useful view") records the recipe
-that made it. Every recipe records the steps that make that recipe. 
+## Overview
 
+`useful-views` is a Python package that gives a data project a fixed
+structure, so that every derived table (a "useful view") records the recipe
+that made it. Every recipe records the steps that make that recipe.
 
 
 
@@ -12,7 +13,10 @@ that made it. Every recipe records the steps that make that recipe.
 > [the quickstart](https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md)
 > walks through it step by step.
 
-## Install
+Full documentation, including a command reference and a guide for AI tools:
+https://jameshorine.github.io/useful-views/
+
+## Installation
 
 ```sh
 uv add useful-views        # or: pip install useful-views
@@ -21,7 +25,9 @@ uv add useful-views        # or: pip install useful-views
 Install it into the same Python environment as the libraries your steps use
 (polars, pandas, ...): steps run with the Python that runs useful-views.
 
-## The resulting data project structure
+## Usage
+
+### The resulting data project structure
 
 Using `useful-views` in a data project results in this layout:
 
@@ -36,9 +42,9 @@ my-data-project/
 │   └── pwt110_bra_deu_esp_usa.csv
 │
 ├── recipes/                      # written by humans, with or without AI tools
-│   ├── pwt_panel/                # one folder = one recipe
+│   ├── pwt_panel/                # one folder = one recipe, at least 1 step, maybe more!
 │   │   ├── recipe.toml           # description, inputs, outputs
-│   │   ├── 01_reshape_long.py    # one file = one step; top comment is its description
+│   │   ├── 01_reshape_long.py    # one file = at least one step; top comment is its description
 │   │   ├── 02_keep_core_variables.py
 │   │   └── 03_pivot_to_panel.py
 │   │
@@ -57,6 +63,9 @@ my-data-project/
     ├── pwt-panel.parquet         # produced by recipes/pwt_panel
     └── gdp-per-capita.parquet    # produced by recipes/gdp_per_capita
 ```
+
+
+
 
 ## Vocabulary
 
@@ -210,7 +219,8 @@ example's `README.md` gives the exact source and the citation.
 | `new_recipe(name)` | `useful-views new-recipe <name>` | Create a recipe folder with a template `recipe.toml` and one stub step. |
 | `run(recipe)` | `useful-views run <recipe>` | Run one recipe's steps in order and record what it produced. |
 | `sync(all=False)` | `useful-views sync [--all]` | Make the views match the recipe folders, like `uv sync`: run what is missing or changed, upstream first, and remove what is no longer declared. |
-| `check()` | `useful-views check` | Report missing inputs, missing views, recipes never run, and stray files. Changes nothing. |
+| `check()` | `useful-views check` | Report everything run and sync would refuse, every recipe sync would run, and what is missing or out of place. Changes nothing. |
+| `RULES` | `useful-views rules` | List the numbered rules a recipe must follow. |
 | `root()` | none | Return the project root, for building paths in a notebook. |
 
 `run` and `sync` differ the way `uv run` and `uv sync` do: `run` does the one
@@ -246,13 +256,10 @@ that recipe first, or use `sync`.
 `sync` makes the project match its recipe folders, the way `uv sync` makes
 an environment match its lock file. Records only ever come from real runs.
 
-1. It reads every recipe folder and works out the order. A malformed
-   `recipe.toml` or step file, a folder name that is not allowed, or recipes
-   that read each other's views in a circle stop it before anything changes.
-   A folder with no `recipe.toml` is skipped with a warning. The other
-   [rules](#rules) are checked as each recipe is about to run, so such a
-   refusal comes after the removals in step 2 and after the recipes before
-   it have run; those changes are kept, and the message says so.
+1. It checks every recipe against the [rules](#rules), judging each against
+   the records as they will be when its turn comes. If any recipe would be
+   refused, it lists every problem at once and changes nothing. A folder
+   with no `recipe.toml` is skipped with a warning.
 2. It removes the records of recipes whose folder was deleted, and any view a
    recipe no longer lists in its outputs, along with those view files. It
    warns about recipes that read a removed view.
@@ -271,16 +278,17 @@ editing a step, `run` that recipe or use `sync --all`.
 | Kind | Meaning |
 |---|---|
 | `unreadable-recipe` | A recipe folder whose `recipe.toml` is missing or cannot be read. |
+| `refused` | A recipe breaks a rule, so `run` and `sync` would refuse it. The finding names the rule. |
 | `missing-input` | An input a `recipe.toml` declares is not on disk. |
-| `never-run` | A recipe folder that has never run successfully. |
-| `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. Run `sync`. |
+| `never-run` | A recipe that has never run successfully. |
+| `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, or a view it reads will be made again. |
+| `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. `sync` removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
 | `stray-file` | A file or folder in `useful-views/`, other than `README.md`, that no recipe makes. |
 
-Each finding says what to do about it. `check` does not apply the
-[Rules](#rules) and does not notice changes to file contents or edited
-recipes, so a project can pass `check` and still have a recipe that `run`
-refuses or `sync` would run again.
+Each finding says what to do about it, and `check` uses the same plan as
+`sync`, so a clean `check` means `sync` has nothing to refuse. It does not
+notice changes inside a step's code or to a file's contents.
 
 ### Rules
 
@@ -310,10 +318,11 @@ refuses or `sync` would run again.
    `useful-views/my-data.parquet`.
 
 It also refuses a recipe name that does not match a folder in `recipes/`, or
-a folder name that is not allowed. Every refusal says what to fix and in
-which file. From Python, a refusal raises `RecipeRefused`, whose `rule` is
-the number above (or `None` for the name refusals) and whose `path` is the
-file to fix.
+a folder name that is not allowed. Every refusal names the rule it broke and
+says what to fix, and in which file. `useful-views rules` lists the rules;
+from Python they are `useful_views.RULES`. A refusal raises
+`RecipeRefused`, whose `rule` is the number above (or `None` for the name
+refusals), `rule_title` its title, and `path` the file to fix.
 
 ### Using it from Python
 
@@ -338,10 +347,20 @@ gdp = uvs.root() / "useful-views" / "gdp-per-capita.parquet"
   `ProjectNotFound`, `ProjectError` and `ExampleError`. Warnings are
   `UsefulViewsWarning`.
 - On the command line, the exit code is 0 for success, 1 when `check` finds
-  problems, 2 for a usage error, and 3 when an operation is refused or fails.
-  `useful-views --version` prints the version. `python -m useful_views ...`
-  works the same as `useful-views ...`, for example when the `useful-views`
-  command is not found.
+  problems, 2 for a usage error, 3 when an operation is refused or fails, and
+  130 when interrupted. `useful-views --version` prints the version.
+  `python -m useful_views ...` works the same as `useful-views ...`, for
+  example when the `useful-views` command is not found.
+
+### For scripts and AI tools
+
+- `--json` on any command prints exactly one JSON document on standard
+  output, also on errors; everything else goes to standard error.
+- `-C <path>` runs a command in another folder, like `git -C`.
+- Every error carries its facts as attributes and `to_dict()`: the recipe,
+  the rule, the file to fix, and the failed step and its error output.
+
+See [Working with AI tools](https://jameshorine.github.io/useful-views/user-guide/guides/ai-tools.html).
 
 ## Generated files
 
@@ -387,7 +406,7 @@ The package writes `datapackage.json` and `useful-views/README.md`; never edit
 those by hand. `init` writes `.gitignore` once, if there is none; after that
 it is yours. So no file has two authors at the same time.
 
-## Not yet
+## Planned, TODO, Not yet
 
 - Hashing, planned for a future release: detecting that an input, recipe or
   view has changed, reporting a view as stale, and `sync` noticing a change
@@ -395,39 +414,37 @@ it is yours. So no file has two authors at the same time.
 - An upper limit on the size of a step.
 - Recording where a raw file came from and how to fetch it again.
 - Subfolders inside `useful-views/`, and notebooks as steps.
-- Cookbooks. A cookbook is a named collection of recipes whose views together
-  form one cohesive set of data products, such as the data behind one paper or
-  one dashboard. Cookbooks are written by humans in `cookbook.json` at the
-  project root:
-
-  ```json
-  {
-    "cookbooks": [
-      {
-        "name": "pwt-growth",
-        "description": "Penn World Table panel and GDP per capita measures for Brazil, Germany, Spain and the United States.",
-        "recipes": [
-          "recipes/pwt_panel",
-          "recipes/gdp_per_capita"
-        ],
-        "views": [
-          "useful-views/pwt-panel.parquet",
-          "useful-views/gdp-per-capita.parquet"
-        ]
-      }
-    ]
-  }
-  ```
-
-  `recipes` lists the recipe folders in the cookbook, upstream first, and
-  `views` lists the data products it delivers. Every view must be made by
-  one of the listed recipes, and every recipe a listed one depends on must
-  be listed too. `useful-views check` would report a cookbook that breaks
-  either rule. `useful-views sync --cookbook pwt-growth` would run just
-  these recipes, and the catalog would group the views by cookbook.
+- Cookbooks. A cookbook will be the ledger of the recipes used in a project:
+  written by useful-views, recording every recipe and its steps, and, with
+  hashing, locking them the way `uv.lock` locks a Python environment. Its
+  exact form is still being designed.
 
 ## License
 
 useful-views is released under the MIT License; see `LICENSE`. The example
 data is an extract of the Penn World Table, licensed CC BY 4.0; the example's
 `README.md` gives the citation.
+
+## Citing useful-views
+
+If you use useful-views in your research, please cite it. GitHub's
+**Cite this repository** button (from `CITATION.cff`) gives APA and BibTeX,
+or use:
+
+> Horine, J. (2026). *useful-views: documented derived tables for research
+> data projects* (Version 0.1.0) [Computer software].
+> https://github.com/jameshorine/useful-views
+
+```bibtex
+@software{horine_useful_views_2026,
+  author  = {Horine, James},
+  title   = {useful-views: documented derived tables for research data projects},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/jameshorine/useful-views},
+  license = {MIT}
+}
+```
+
+Please also cite the sources of any data you use with it; the `pwt` example
+uses the Penn World Table, whose citation is in the example's `README.md`.

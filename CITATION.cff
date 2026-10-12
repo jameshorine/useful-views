@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use useful-views in your research, please cite it as below."
+type: software
+title: "useful-views: documented derived tables for research data projects"
+abstract: >-
+  A Python package that gives a research data project a fixed structure, in
+  which every derived table (a "useful view") records the recipe, inputs and
+  steps that made it, in a standard Data Package.
+authors:
+  - family-names: Horine
+    given-names: James
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/jameshorine/useful-views"
+url: "https://jameshorine.github.io/useful-views/"
+keywords:
+  - research data
+  - reproducibility
+  - data provenance
+  - data package
+  - python
