@@ -6,6 +6,16 @@
 # See https://posit-dev.github.io/great-docs/ for every option.
 
 display_name: useful-views
+
+# The navbar shows the binoculars next to the text title, and the same icon
+# is the browser-tab icon. The README's wide logo opens the landing page, so
+# the site's own hero banner is off.
+logo:
+  light: docs/useful-views-icon.svg
+  dark: docs/useful-views-icon.svg
+  show_title: true
+favicon: docs/useful-views-icon.svg
+hero: false
 parser: google
 dynamic: true
 repo: https://github.com/jameshorine/useful-views

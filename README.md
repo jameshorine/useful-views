@@ -1,4 +1,9 @@
-# useful-views
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/useful-views-logo-dark.svg">
+    <img src="docs/useful-views-logo.svg" alt="useful-views" width="480">
+  </picture>
+</p>
 
 ## Overview
 
