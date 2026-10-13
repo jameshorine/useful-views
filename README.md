@@ -8,11 +8,6 @@ that made it. Every recipe records the steps that make that recipe.
 
 
 
-> **Status: alpha.** Tested on Python 3.11 to 3.14. To see it working,
-> `useful-views example pwt` downloads a ready-to-run example project, and
-> [the quickstart](https://github.com/jameshorine/useful-views/blob/main/docs/quickstart.md)
-> walks through it step by step.
-
 Full documentation, including a command reference and a guide for AI tools:
 https://jameshorine.github.io/useful-views/
 
@@ -27,6 +22,8 @@ Install it into the same Python environment as the libraries your steps use
 
 ## Usage
 
+Life is uncertian, lets eat dessert first. 
+
 ### The resulting data project structure
 
 Using `useful-views` in a data project results in this layout:
@@ -39,29 +36,29 @@ my-data-project/
 │
 ├── raw/                          # raw inputs: git-ignored, never written by a recipe
 │   ├── .gitkeep                  # keeps the folder in git
-│   └── pwt110_bra_deu_esp_usa.csv
+│   └── my_data.csv
 │
 ├── recipes/                      # written by humans, with or without AI tools
-│   ├── pwt_panel/                # one folder = one recipe, at least 1 step, maybe more!
+│   ├── clean_data/               # one folder = one recipe, at least 1 step, maybe more!
 │   │   ├── recipe.toml           # description, inputs, outputs
-│   │   ├── 01_reshape_long.py    # one file = at least one step; top comment is its description
-│   │   ├── 02_keep_core_variables.py
-│   │   └── 03_pivot_to_panel.py
+│   │   ├── 01_first_step.py      # one file = at least one step; top comment is its description
+│   │   ├── 02_second_step.py
+│   │   └── 03_third_step.py
 │   │
-│   └── gdp_per_capita/           # a second recipe, taking a view as its input
-│       ├── recipe.toml           # inputs = ["useful-views/pwt-panel.parquet"]
-│       └── 01_derive_measures.py # smallest valid recipe: one step file
+│   └── summarize_and_analyze/    # a second recipe, taking a view as its input
+│       ├── recipe.toml           # inputs = ["useful-views/clean-data.parquet"]
+│       └── 01_only_step.py       # smallest valid recipe: one step file
 │
 ├── work/                         # intermediates, never recorded, git-ignored
-│   ├── pwt_panel/                # one scratch folder per recipe, emptied before each run
-│   │   ├── long.parquet
-│   │   └── core.parquet
-│   └── gdp_per_capita/
+│   ├── clean_data/               # one scratch folder per recipe, emptied before each run
+│   │   ├── step_1.parquet
+│   │   └── step_2.parquet
+│   └── summarize_and_analyze/
 │
 └── useful-views/                 # declared outputs only, flat
     ├── README.md                 # generated: catalog of the views and how each was made
-    ├── pwt-panel.parquet         # produced by recipes/pwt_panel
-    └── gdp-per-capita.parquet    # produced by recipes/gdp_per_capita
+    ├── clean-data.parquet        # produced by recipes/clean_data
+    └── summary_analysis.parquet  # produced by recipes/summarize_and_analyze
 ```
 
 
@@ -76,7 +73,7 @@ There are a few new vocabulary terms as a result.
 
 **Recipe**: a recipe, just like cooking, is made up of steps. It is a
 folder in `recipes/`. From the inputs it declares, it produces the useful
-views it declares, by running its steps in order.
+views by running its component steps in order.
 
 **Step**: each step in your flow does at least one non-trivial action on the
 data. A step is one file in a recipe folder. For example, in polars, given:
@@ -317,7 +314,7 @@ notice changes inside a step's code or to a file's contents.
    `useful-views/data.parquet`, or `raw/My Data.csv` and
    `useful-views/my-data.parquet`.
 
-It also refuses a recipe name that does not match a folder in `recipes/`, or
+`run` also refuses a recipe name that does not match a folder in `recipes/`, or
 a folder name that is not allowed. Every refusal names the rule it broke and
 says what to fix, and in which file. `useful-views rules` lists the rules;
 from Python they are `useful_views.RULES`. A refusal raises
@@ -408,12 +405,13 @@ it is yours. So no file has two authors at the same time.
 
 ## Planned, TODO, Not yet
 
-- Hashing, planned for a future release: detecting that an input, recipe or
+- Input and output hashing: planned for a future release: 
+  - detecting that an input, recipe or
   view has changed, reporting a view as stale, and `sync` noticing a change
   inside a step's code.
-- An upper limit on the size of a step.
+- Do we need to consider an upper limit on the size of a step? I have no idea.
 - Recording where a raw file came from and how to fetch it again.
-- Subfolders inside `useful-views/`, and notebooks as steps.
+- Subfolders inside `useful-views/`, and notebooks as steps. This would be really useful.
 - Cookbooks. A cookbook will be the ledger of the recipes used in a project:
   written by useful-views, recording every recipe and its steps, and, with
   hashing, locking them the way `uv.lock` locks a Python environment. Its
