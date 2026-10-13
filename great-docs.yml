@@ -8,14 +8,21 @@
 display_name: useful-views
 
 # The navbar shows the binoculars next to the text title, and the same icon
-# is the browser-tab icon. The README's wide logo opens the landing page, so
-# the site's own hero banner is off.
+# is the browser-tab icon. On the landing page, the hero banner shows the
+# wide logo in the site's light or dark theme, and replaces the README's
+# centered logo-and-badges block (great-docs strips that block).
 logo:
   light: docs/useful-views-icon.svg
   dark: docs/useful-views-icon.svg
   show_title: true
 favicon: docs/useful-views-icon.svg
-hero: false
+hero:
+  enabled: true
+  logo:
+    light: docs/useful-views-logo.svg
+    dark: docs/useful-views-logo-dark.svg
+  logo_height: 140px
+  name: false          # the logo already says "useful-views"
 parser: google
 dynamic: true
 repo: https://github.com/jameshorine/useful-views

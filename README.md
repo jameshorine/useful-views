@@ -1,9 +1,18 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/useful-views-logo-dark.svg">
-    <img src="docs/useful-views-logo.svg" alt="useful-views" width="480">
-  </picture>
-</p>
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/useful-views-logo-dark.svg">
+  <img src="docs/useful-views-logo.svg" alt="useful-views" width="480">
+</picture>
+
+*Documented derived tables for research data projects.*
+
+[![PyPI](https://img.shields.io/pypi/v/useful-views)](https://pypi.org/project/useful-views/)
+[![Python](https://img.shields.io/badge/python-3.11%E2%80%933.14-blue)](https://pypi.org/project/useful-views/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/jameshorine/useful-views/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-jameshorine.github.io-informational)](https://jameshorine.github.io/useful-views/)
+
+</div>
 
 ## Overview
 
