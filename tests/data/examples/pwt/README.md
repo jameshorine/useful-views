@@ -2,10 +2,12 @@
 
 A complete [useful-views](https://github.com/jameshorine/useful-views)
 project: raw data and two recipes, ready to run. Get a copy with
-`useful-views example pwt`, then make its views with:
+`useful-views example pwt`, then, from its folder:
 
 ```sh
-useful-views sync
+useful-views sync       # run both recipes, upstream first, to make the views
+useful-views check      # expect: No problems found.
+useful-views cookbook   # write cookbook.json, the ledger of the recipes used
 ```
 
 ## Data source and credit
@@ -41,5 +43,21 @@ are not published or endorsed by the Groningen Growth and Development Centre.
   `useful-views/gdp-per-capita.parquet`.
 
 The steps use polars, so install it in the same environment as useful-views.
-Once the recipes have run, `useful-views/README.md` is the generated catalog
-of both views.
+
+## What the project makes
+
+- `useful-views/pwt-panel.parquet` and `useful-views/gdp-per-capita.parquet`:
+  the two views.
+- `useful-views/README.md`: the generated catalog. For each view, the recipe
+  that made it, its inputs, its numbered steps and its columns.
+- `datapackage.json`: the generated record of what each recipe made from
+  what, as a [Data Package](https://datapackage.org/).
+- `cookbook.json`: written by `useful-views cookbook`. Every recipe in run
+  order, with its inputs, outputs and steps, like a lock file.
+  `useful-views cookbook --check` tells you whether it is up to date.
+- `work/`: in-between files the steps pass to each other, emptied before
+  each run.
+
+Commit `datapackage.json`, the catalog and `cookbook.json` with your recipes.
+The `.gitignore` that useful-views writes keeps `raw/`, `work/` and the
+parquet views out of git.

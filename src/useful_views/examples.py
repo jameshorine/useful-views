@@ -18,7 +18,7 @@ from .errors import UsefulViewsError
 from .project import check_not_nested, init
 
 DATA_REPO = "https://raw.githubusercontent.com/jameshorine/useful-views-data"
-DATA_TAG = "examples-v1"
+DATA_TAG = "examples-v2"
 # Set this to download from somewhere else: a mirror, or a local copy as a
 # file:// URL laid out like the repository (examples/<name>/...).
 DATA_URL_ENV = "USEFUL_VIEWS_DATA_URL"
@@ -28,7 +28,7 @@ EXAMPLES = {
     "pwt": {
         "description": "Penn World Table 11.0 extract for four countries, with two recipes.",
         "files": {
-            "README.md": "3e20d84874544ac588bf0fcd72e5fd84a6e03a88a10c896b81f1c7c7c44a4c13",
+            "README.md": "7911d2ef0326d7f31f603a56bcefd571a8f1290c24e91085a609d3293cccb830",
             "raw/pwt110_bra_deu_esp_usa.csv": "e7d172ce2594e4c2717aa9efd2558b2868745f5b1124861548d913ade61476eb",
             "recipes/pwt_panel/recipe.toml": "d8b119db27cfb18dc48fff42bd09c467687ff8b72d4590694f994173a3879478",
             "recipes/pwt_panel/01_reshape_long.py": "29e51ff4afd23ebdcd320ec0880855cac7c01ec8b3bc647bd2b2546e83da629a",
