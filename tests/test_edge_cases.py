@@ -4,6 +4,7 @@ what they must not, leftovers on disk, merges, and names on other systems."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -77,7 +78,14 @@ def test_a_recipe_name_useful_views_ignores_is_refused(project):
 def test_names_windows_reserves_are_refused(project, name):
     with pytest.raises(uvs.RecipeRefused, match="reserved device name on Windows"):
         uvs.new_recipe(name, root=project)
-    (project / "recipes" / name).mkdir()
+    # A folder with such a name, made on macOS or Linux, breaks the project for
+    # Windows users. Windows itself may not make one (nul is a device there).
+    try:
+        (project / "recipes" / name).mkdir()
+    except OSError:
+        return
+    if name not in os.listdir(project / "recipes"):
+        return
     with pytest.raises(uvs.RecipeRefused, match="reserved device name on Windows"):
         uvs.run(name, root=project)
 

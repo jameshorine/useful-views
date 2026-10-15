@@ -1,13 +1,11 @@
 name: CI
 
-# Manual-only while the repository is private (Actions minutes are limited).
-# Once it is public, run CI automatically by replacing this block with:
-#   on:
-#     push:
-#       branches: [main, dev]
-#     pull_request:
-#     workflow_dispatch:
+# Runs on every push to main or dev, on every pull request, and by hand
+# (Actions tab > CI > Run workflow).
 on:
+  push:
+    branches: [main, dev]
+  pull_request:
   workflow_dispatch:
 
 permissions:
