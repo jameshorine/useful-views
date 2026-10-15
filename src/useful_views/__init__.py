@@ -13,6 +13,7 @@ from .errors import (
     UsefulViewsError,
     UsefulViewsWarning,
 )
+from .cookbooks import CookbookError, CookbookResult, cookbook
 from .examples import ExampleError, example
 from .new import new_recipe
 from .project import init, root
@@ -26,6 +27,8 @@ except PackageNotFoundError:  # running from a source tree that is not installed
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "CookbookError",
+    "CookbookResult",
     "ExampleError",
     "Finding",
     "OutputError",
@@ -40,6 +43,7 @@ __all__ = [
     "UsefulViewsError",
     "UsefulViewsWarning",
     "check",
+    "cookbook",
     "example",
     "init",
     "new_recipe",

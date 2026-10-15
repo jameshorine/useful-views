@@ -236,6 +236,7 @@ example's `README.md` gives the exact source and the citation.
 | `run(recipe)` | `useful-views run <recipe>` | Run one recipe's steps in order and record what it produced. |
 | `sync(all=False)` | `useful-views sync [--all]` | Make the views match the recipe folders, like `uv sync`: run what is missing or changed, upstream first, and remove what is no longer declared. |
 | `check()` | `useful-views check` | Report everything run and sync would refuse, every recipe sync would run, and what is missing or out of place. Changes nothing. |
+| `cookbook(check=False)` | `useful-views cookbook [--check]` | Write `cookbook.json`, the ledger of the recipes used, in run order. `--check` verifies it, for CI. |
 | `RULES` | `useful-views rules` | List the numbered rules a recipe must follow. |
 | `root()` | none | Return the project root, for building paths in a notebook. |
 
@@ -300,6 +301,7 @@ editing a step, `run` that recipe or use `sync --all`.
 | `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, or a view it reads will be made again. |
 | `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. `sync` removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
+| `stale-cookbook` | `cookbook.json` no longer matches the recorded recipes. Update it with `useful-views cookbook`. |
 | `stray-file` | A file or folder in `useful-views/`, other than `README.md`, that no recipe makes. |
 
 Each finding says what to do about it, and `check` uses the same plan as
@@ -401,6 +403,13 @@ datapackage.json` passes on it whenever every recorded file is present.
 for each view, the recipe's description, its inputs, its numbered steps, and
 its columns.
 
+**`cookbook.json`** is the ledger of the recipes the project uses, written by
+`useful-views cookbook` the way `uv lock` writes `uv.lock`: every recorded
+recipe in run order, upstream first, with its description, inputs, outputs
+and steps, and the raw inputs the recipes read. The project must be in sync
+first. `useful-views cookbook --check` exits 1 when it is missing or out of
+date, so CI can require an up-to-date cookbook.
+
 **`.gitignore`** is written once by `init`, if there is none:
 
 ```
@@ -411,15 +420,15 @@ useful-views/*.parquet
 ```
 
 So raw data, work files and views stay out of git, while `recipes/`,
-`datapackage.json` and the catalog are committed. A teammate places the raw
+`datapackage.json`, `cookbook.json` and the catalog are committed. A teammate places the raw
 files and runs `useful-views sync` to make the views again.
 
 ## Who writes what
 
 Humans write the project `README.md` and everything in `recipes/`; `init`
 and `new-recipe` only start them from templates and never touch them again.
-The package writes `datapackage.json` and `useful-views/README.md`; never edit
-those by hand. `init` writes `.gitignore` once, if there is none; after that
+The package writes `datapackage.json`, `useful-views/README.md` and, when you
+run `useful-views cookbook`, `cookbook.json`; never edit those by hand. `init` writes `.gitignore` once, if there is none; after that
 it is yours. So no file has two authors at the same time.
 
 ## Planned, TODO, Not yet
@@ -432,10 +441,10 @@ it is yours. So no file has two authors at the same time.
 - Recording where a raw file came from and how to fetch it again.
 - More view formats alongside parquet, such as CSV and Arrow.
 - Subfolders inside `useful-views/`, and notebooks as steps. This would be really useful.
-- Cookbooks. A cookbook will be the ledger of the recipes used in a project:
-  written by useful-views, recording every recipe and its steps, and, with
-  hashing, locking them the way `uv.lock` locks a Python environment. Its
-  exact form is still being designed.
+- Cookbook hashing. Version 1 of `cookbook.json` records every recipe and its
+  steps. Later versions will add the SHA-256 of every raw input, recipe file,
+  step and view, and the environment the steps ran in, locking them the way
+  `uv.lock` locks a Python environment.
 
 ## License
 

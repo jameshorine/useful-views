@@ -27,7 +27,7 @@ def test_manifest_matches_the_published_files():
     on_disk = sorted(
         p.relative_to(REFERENCE).as_posix()
         for p in REFERENCE.rglob("*")
-        if p.is_file() and p.relative_to(REFERENCE).parts[0] not in ("useful-views",) and p.name != "datapackage.json"
+        if p.is_file() and p.relative_to(REFERENCE).parts[0] not in ("useful-views",) and p.name not in ("datapackage.json", "cookbook.json")
     )
     assert on_disk == PUBLISHED
     for rel, digest in EXAMPLES["pwt"]["files"].items():

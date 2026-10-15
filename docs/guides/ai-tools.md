@@ -24,6 +24,9 @@ assistant, or for you when you instruct one.
   `useful-views sync --all`, or `run` that recipe and those downstream.
 - `useful-views rules` lists the rules; every refusal names the rule it
   broke.
+- `cookbook.json` lists every recipe used and its steps, in run order: a
+  quick way to understand a project. `useful-views cookbook` updates it once
+  the project is in sync.
 
 ## Machine-readable output
 

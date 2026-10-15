@@ -9,7 +9,7 @@ import os
 import sys
 import warnings
 
-from . import __version__, check, example, init, new_recipe, run, sync
+from . import __version__, check, cookbook, example, init, new_recipe, run, sync
 from .errors import UsefulViewsError, UsefulViewsWarning
 from .rulebook import RULES, describe_rules
 
@@ -22,7 +22,7 @@ EXIT_INTERRUPTED = 130
 
 EXIT_CODES = """exit codes:
   0    success
-  1    check found problems
+  1    check found problems, or cookbook --check found the cookbook out of date
   2    usage error (unknown command or option, or a bad -C path)
   3    refused or failed (the message says what to fix, and in which file)
   130  interrupted (Ctrl-C)"""
@@ -100,6 +100,13 @@ def _parser() -> argparse.ArgumentParser:
             "missing its views, plus everything downstream of those.")
     p.add_argument("--all", action="store_true",
                    help="run every recipe again, upstream first (sync does not notice edits to a step's code)")
+
+    p = add("cookbook", "write cookbook.json, the ledger of the recipes used",
+            "Write cookbook.json at the project root: every recorded recipe, in run order, with its "
+            "description, inputs, outputs and steps, and the raw inputs the recipes read. Generated from "
+            "datapackage.json, so the project must be in sync first. Commit it, like a lock file.")
+    p.add_argument("--check", action="store_true",
+                   help="do not write; exit 1 if cookbook.json is missing or out of date (for CI)")
 
     add("rules", "list the rules a recipe must follow",
         "List the numbered rules. A refusal names the rule it broke.")
@@ -220,6 +227,20 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, dict]:
         else:
             print("Updated datapackage.json and useful-views/README.md.")
         return EXIT_OK, {"ok": True, **result.to_dict()}
+    if args.command == "cookbook":
+        result = cookbook(check=args.check)
+        data = {"ok": result.up_to_date, **result.to_dict()}
+        if args.check:
+            if result.up_to_date:
+                print("cookbook.json is up to date.")
+                return EXIT_OK, data
+            print("cookbook.json is missing or out of date. Update it with: useful-views cookbook")
+            return EXIT_PROBLEMS, data
+        if result.written:
+            print(f"Wrote cookbook.json: {len(result.recipes)} recipe(s), in run order.")
+        else:
+            print("cookbook.json is already up to date.")
+        return EXIT_OK, data
     if args.command == "rules":
         print(describe_rules())
         return EXIT_OK, {"ok": True, "rules": [r._asdict() for r in RULES.values()]}

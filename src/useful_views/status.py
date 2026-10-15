@@ -14,6 +14,7 @@ from .paths import CATALOG, RECIPES, VIEWS, UnreadableFolder, exists_exact, list
 from .project import find_root
 from .recipe import declared_paths, read_declaration
 from .record import load_datapackage
+from .cookbooks import COOKBOOK, expected_text
 from .syncing import plan_sync
 
 # Every kind of finding, in the order check() reports them, with its meaning.
@@ -26,6 +27,7 @@ KIND_MEANINGS = {
                    "outputs changed, or a view it reads will be made again.",
     "missing-recipe-folder": "datapackage.json records a recipe whose folder is gone. sync removes the record.",
     "missing-view": "A recorded view whose file is missing.",
+    "stale-cookbook": "cookbook.json does not match the recorded recipes. Update it with useful-views cookbook.",
     "stray-file": "A file or folder in useful-views/, other than README.md, that no recipe makes.",
 }
 KINDS = tuple(KIND_MEANINGS)
@@ -192,6 +194,17 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                     recipe=name,
                 )
             )
+
+    cookbook_file = project / COOKBOOK
+    if cookbook_file.is_file() and cookbook_file.read_text(encoding="utf-8") != expected_text(project):
+        findings.append(
+            Finding(
+                "stale-cookbook",
+                COOKBOOK,
+                f"{COOKBOOK} does not match the recorded recipes. Once the project is in sync, update it "
+                "with: useful-views cookbook",
+            )
+        )
 
     known = {p for parsed in declared.values() for p in declared_paths(parsed, "outputs")}
     known |= {p for r in records.values() for p in r["outputs"]}

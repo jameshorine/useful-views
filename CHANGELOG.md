@@ -19,6 +19,9 @@ The first release: the minimum version.
   rule number) and recipes changed since they last ran (`out-of-date`).
   `sync` checks every recipe before changing anything and lists every
   problem at once.
+- `useful-views cookbook` writes `cookbook.json`, the ledger of the recipes a
+  project uses, in run order (format version 1; file hashes are planned);
+  `cookbook --check` verifies it in CI, and `check` reports `stale-cookbook`.
 - For scripts and AI tools: `--json` on every command, `-C <path>`,
   `useful-views rules` (and `useful_views.RULES`), exit codes in `--help`,
   and errors that carry the recipe, rule, file and step (`to_dict()`).

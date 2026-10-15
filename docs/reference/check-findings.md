@@ -16,6 +16,7 @@ guide-section: Reference
 | `out-of-date` | A recipe that sync would run again: its recipe.toml or steps changed since it last ran, its outputs changed, or a view it reads will be made again. |
 | `missing-recipe-folder` | datapackage.json records a recipe whose folder is gone. sync removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
+| `stale-cookbook` | cookbook.json does not match the recorded recipes. Update it with useful-views cookbook. |
 | `stray-file` | A file or folder in useful-views/, other than README.md, that no recipe makes. |
 
 `check` does not notice changes inside a step's code or to a file's contents.

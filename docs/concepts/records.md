@@ -59,6 +59,40 @@ comments) and its columns with their types. It is committed to git, so a
 reviewer sees what each view is and how it was made without running
 anything.
 
+## cookbook.json
+
+The cookbook is the project's ledger of the recipes it uses, written by a
+command, the way `uv lock` writes `uv.lock`:
+
+```sh
+useful-views cookbook           # write or update cookbook.json
+useful-views cookbook --check   # exit 1 if it is missing or out of date (for CI)
+```
+
+It lists every recorded recipe in run order, upstream first, with its
+description, inputs, outputs and steps, and the raw inputs the recipes read.
+It is generated from `datapackage.json`, so the project must be in sync
+first: `cookbook` refuses, and says why, while `check` reports anything other
+than stray files. Writing an unchanged cookbook leaves the file untouched.
+Commit it to git; `check` reports `stale-cookbook` when it no longer matches.
+
+```json
+{
+  "version": 1,
+  "generator": "useful-views",
+  "project": "my-project",
+  "raw_inputs": ["raw/pwt110_bra_deu_esp_usa.csv"],
+  "recipes": [
+    {"name": "pwt_panel", "description": "...", "steps": ["..."]},
+    {"name": "gdp_per_capita", "description": "...", "steps": ["..."]}
+  ]
+}
+```
+
+This is version 1 of the format. Later versions are planned to add the
+SHA-256 of every raw input, recipe file, step and view, and the environment
+the steps ran in, so that `cookbook --check` can tell when anything changed.
+
 ## What the record does not track yet
 
 The record says which recipe made each view, from which inputs, with which

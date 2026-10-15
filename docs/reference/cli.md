@@ -126,6 +126,21 @@ usage: useful-views sync [-h] [-C PATH] [--json] [--all]
 | `--json` | print the result as JSON on standard output; other output goes to standard error |
 | `--all` | run every recipe again, upstream first (sync does not notice edits to a step's code) |
 
+## `useful-views cookbook`
+
+Write cookbook.json at the project root: every recorded recipe, in run order, with its description, inputs, outputs and steps, and the raw inputs the recipes read. Generated from datapackage.json, so the project must be in sync first. Commit it, like a lock file.
+
+```text
+usage: useful-views cookbook [-h] [-C PATH] [--json] [--check]
+```
+
+| Option | Description |
+|---|---|
+| `-h`, `--help` | show this help message and exit |
+| `-C` `PATH`, `--project` `PATH` | run as if started in PATH (like git -C), for example a project folder |
+| `--json` | print the result as JSON on standard output; other output goes to standard error |
+| `--check` | do not write; exit 1 if cookbook.json is missing or out of date (for CI) |
+
 ## `useful-views rules`
 
 List the numbered rules. A refusal names the rule it broke.
@@ -145,7 +160,7 @@ usage: useful-views rules [-h] [-C PATH] [--json]
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | check found problems |
+| `1` | check found problems, or cookbook --check found the cookbook out of date |
 | `2` | usage error (unknown command or option, or a bad -C path) |
 | `3` | refused or failed (the message says what to fix, and in which file) |
 | `130` | interrupted (Ctrl-C) |

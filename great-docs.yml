@@ -47,6 +47,7 @@ reference:
       - run
       - sync
       - check
+      - cookbook
       - root
   - title: Results
     desc: What run, sync and check return.
@@ -54,6 +55,7 @@ reference:
       - RunResult
       - SyncResult
       - Finding
+      - CookbookResult
   - title: Errors and warnings
     desc: Every error is a UsefulViewsError and carries its facts as attributes and to_dict().
     contents:
@@ -64,6 +66,7 @@ reference:
       - ProjectError
       - ProjectNotFound
       - ExampleError
+      - CookbookError
       - UsefulViewsWarning
   - title: Rules
     desc: The numbered rules a recipe must follow.
@@ -95,3 +98,5 @@ skill:
       use: "useful-views run <recipe>"
     - need: "List the rules"
       use: "useful-views rules"
+    - need: "Record the recipes used, for review or CI"
+      use: "useful-views cookbook (and cookbook --check in CI)"
