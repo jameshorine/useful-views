@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .errors import RecipeRefused, warn
-from .paths import RECIPES, WINDOWS_RESERVED, is_file, listdir
+from .paths import IGNORED_NAMES, RECIPES, WINDOWS_RESERVED, is_file, listdir
 
 RECIPE_NAME = re.compile(r"^[a-z0-9_]+$")
 STEP_FILE = re.compile(r"^([0-9]{2})_(.+)\.py$")
@@ -331,6 +331,8 @@ def recipe_name_problem(name: str) -> str | None:
     if WINDOWS_RESERVED.match(name):
         return (f"{name} is a reserved device name on Windows, so the folder could not be checked out there; "
                 f"choose another, like {name}_data")
+    if name in IGNORED_NAMES:
+        return f"{name} is a folder name useful-views ignores; choose another, like {name.strip('_')}_data"
     return None
 
 

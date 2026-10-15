@@ -213,18 +213,23 @@ In detail:
   `01 clean.py` or `01_clean.py.txt`, is not run, and `run` warns about it.
   R, notebook, Quarto, Julia and Stata files named like a step
   (`02_clean.R`, `02_explore.ipynb`, ...) are refused: steps must be Python
-  files. Any other file in the folder is ignored.
+  files. Any other file in the folder is ignored, unless it starts with
+  `NN_` and ends in `.py` (then it is a step: keep old copies elsewhere).
 - **Step description**: the block of `#` lines at the very top of the file,
-  joined into one sentence. Blank lines, a shebang, a coding line, notebook
-  cell markers (`# %%`, `# In[1]:`), a Jupytext `# ---` header, an inline
-  `# /// script` block and decoration lines like `# -----` before it are
-  skipped. It must not start with TODO.
+  its lines joined with spaces into one line. Blank lines, a shebang, a
+  coding line, notebook cell markers (`# %%`, `# In[1]:`, with any title on
+  the same line), a Jupytext `# ---` header, an inline `# /// script` block
+  and decoration lines like `# -----` before it are skipped; a docstring is
+  not, so put the comment first. It must not start with TODO. Step files are
+  UTF-8.
 - **Steps** run one at a time as separate processes, with the project root as
   the working directory, using the same Python interpreter as useful-views,
   and with `work/<recipe>/` already created and empty. A step gets no
   keyboard input, so `input()` and `breakpoint()` fail inside `run`; to debug
-  a step, run it yourself from the project root, as in
-  `python recipes/pwt_panel/01_reshape_long.py`. A step reads its recipe's
+  a step, run it yourself from the project root with the same Python, as in
+  `python -X utf8 recipes/pwt_panel/01_reshape_long.py`, after the recipe has
+  run once (so `work/<recipe>/` exists), then `run` the recipe again to
+  record it. A step reads its recipe's
   inputs and earlier steps' files in `work/<recipe>/`, and writes the
   recipe's outputs. It never writes to `raw/`, and never reads another
   recipe's work files.

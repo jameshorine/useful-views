@@ -251,7 +251,7 @@ places the raw files as your `README.md` describes, then runs
 | edit the code inside a step | `useful-views sync --all`, or `run` that recipe and then each recipe downstream of it. (`sync` alone does not notice code changes yet.) |
 | replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`, which `sync` notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all`: the views are not in git, so they still come from the recipes as they were |
-| delete a recipe folder, or remove an output from a recipe | `useful-views sync`: it removes the old records and view files |
+| delete a recipe folder, or remove an output from a recipe | `useful-views sync`: it removes the old records and view files (first change the inputs of any recipe that reads those views) |
 | rename a recipe folder | change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync` |
 | clone the project on another computer | install the libraries, place the raw files, then `useful-views sync` |
 | want to know if anything is missing or broken | `useful-views check`. It notices edited `recipe.toml` files, added or removed steps and changed top comments, but not edits to a step's code or to a file's contents. |

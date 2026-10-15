@@ -20,7 +20,8 @@ def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
 
     Args:
         name: Lowercase letters, digits and underscores, like `"pwt_panel"`,
-            and not a name Windows reserves (con, aux, nul, prn, com1...).
+            and not a name Windows reserves (con, aux, nul, prn, com1...) or
+            `__pycache__`.
         root: The project folder. By default it is found by walking up from
             the current folder to `datapackage.json`.
 

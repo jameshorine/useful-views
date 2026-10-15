@@ -96,7 +96,11 @@ which is not in git).
 `check` changes nothing. It reports what is missing or out of place, every
 rule a recipe breaks, and every recipe `sync` would run, each with what to do
 about it. See [Check findings](../reference/check-findings.md). It exits with
-1 when it finds anything, so it works as a gate in scripts and CI.
+1 when it finds anything, so it works as a gate in scripts, and in CI jobs
+that have the raw data and run `useful-views sync` first. A plain git
+checkout has no raw files or views, so there `check` always reports them
+missing; to gate such a job, use `useful-views cookbook --check` (see
+[Cookbook](cookbook.md#checking-it-in-ci)).
 
 ## When you change things
 
@@ -106,7 +110,7 @@ about it. See [Check findings](../reference/check-findings.md). It exits with
 | edit the code inside a step | `useful-views sync --all` |
 | replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`; then `sync` alone notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
-| delete a recipe folder, or remove an output | `useful-views sync`: it removes the old records and view files |
+| delete a recipe folder, or remove an output | `useful-views sync`: it removes the old records and view files (first change the inputs of any recipe that reads those views) |
 | rename a recipe folder | change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync` |
 | clone the project on another computer | place the raw files, then `useful-views sync` |
 | finish a change you will commit | `useful-views sync`, then `useful-views cookbook`, then commit |

@@ -68,6 +68,11 @@ def test_decoration_lines_around_the_description():
 # --- recipe names -------------------------------------------------------------------
 
 
+def test_a_recipe_name_useful_views_ignores_is_refused(project):
+    with pytest.raises(uvs.RecipeRefused, match="a folder name useful-views ignores"):
+        uvs.new_recipe("__pycache__", root=project)
+
+
 @pytest.mark.parametrize("name", ["con", "aux", "nul", "prn", "com1", "lpt9"])
 def test_names_windows_reserves_are_refused(project, name):
     with pytest.raises(uvs.RecipeRefused, match="reserved device name on Windows"):

@@ -19,8 +19,9 @@ From Python: `uvs.cookbook()` and `uvs.cookbook(check=True)`.
 The record in `datapackage.json` is written for tools: every file, its
 columns and types, recipes in name order. The cookbook is written for
 people and reviewers: one file that reads top to bottom as the method of the
-project, upstream first, and that changes in git exactly when the recipes
-change. A reviewer reading a pull request, an examiner reading a thesis
+project, upstream first, and that changes in git when a recipe's
+`recipe.toml`, its list of steps or a step's top comment changes (not when
+only the code inside a step changes; see [What is next](#what-is-next)). A reviewer reading a pull request, an examiner reading a thesis
 repository, or an AI assistant opening the project sees what is made from
 what without running anything.
 
@@ -46,9 +47,12 @@ stray files or a stale catalog or cookbook, `cookbook` refuses, lists the
 problems, and writes nothing. Writing an unchanged cookbook leaves the file
 and its timestamp alone, so git shows a change only when there is one.
 
-`run` and `sync` do not update the cookbook themselves. When they change the
-records, they warn that `cookbook.json` no longer matches, and `check`
-reports `stale-cookbook` until you run `useful-views cookbook`.
+`run` and `sync` do not update the cookbook themselves. Once the project has
+a `cookbook.json`, they warn when they change the records and leave it out of
+date, and `check` reports `stale-cookbook` until you run `useful-views
+cookbook`. Before the first `useful-views cookbook`, nothing reminds you:
+`check` says `No problems found.`, but `cookbook --check` (and so the CI job
+below) exits with 1 until `cookbook.json` is written and committed.
 
 ## Checking it in CI
 
@@ -58,8 +62,19 @@ with 1, and lists why, when:
 
 - `cookbook.json` is missing, or differs from the committed
   `datapackage.json`;
-- a recipe folder no longer matches its record: a recipe added, edited or
-  removed, or an output dropped, and committed without running `sync`.
+- a recipe folder no longer matches its record: a recipe added or removed,
+  its `recipe.toml` edited, a step added, removed or renamed, a step's top
+  comment changed, or an output dropped, and committed without running
+  `sync`;
+- a recipe breaks a rule (`refused`), or a folder in `recipes/` has no
+  readable `recipe.toml` (`unreadable-recipe`). `sync` does not fix these:
+  fix what is listed first.
+
+An edit inside a step's code passes, as it passes `check` and `sync` (see
+[What is next](#what-is-next)). The catalog, `useful-views/README.md`, is
+not checked; `useful-views sync` writes it again. If `datapackage.json`
+cannot be read, for example because of merge conflict markers, the command
+exits with 3.
 
 A GitHub Actions job that requires an up-to-date cookbook:
 
@@ -76,14 +91,26 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install useful-views
+      - run: pip install useful-views==0.1.0   # the version your project uses
       - run: useful-views cookbook --check
 ```
 
+The job assumes the project is at the top of the repository. If it is in a
+subfolder, name it: `useful-views -C path/to/project cookbook --check`.
+Without that, the command finds no project and exits with 3, not 1.
+
 It runs no step, so the job needs neither your data nor your steps'
-libraries. Pin useful-views to the version in your environment file if you
-want the job to match it exactly. With `--json`, the reasons are in the
-document's `findings`, the same objects `check` gives.
+libraries. Pin useful-views to the version in your environment file:
+`--check` compares the committed file with what the installed version would
+write, so an unpinned job could fail on an unchanged project when a new
+release changes the format.
+
+With `--json`, `ok` is the answer. `findings` lists the recipe folders that
+no longer match their records, as the same objects `check` gives; it is
+empty when the only problem is that `cookbook.json` is missing or differs,
+so test `ok`, not `findings`. When `useful-views cookbook` (without
+`--check`) refuses to write, it exits with 3, and its findings are in
+`error.findings`.
 
 ## What is in it
 
@@ -128,15 +155,20 @@ document's `findings`, the same objects `check` gives.
 - **`check` reports `stale-cookbook`**: the records changed since the
   cookbook was written. Run `useful-views sync`, then `useful-views
   cookbook`, and commit both.
-- **A merge conflict in `cookbook.json`**: do not resolve it by hand. Take
-  either side (`git checkout --ours cookbook.json`), make the project
-  consistent with `useful-views sync --all`, then run `useful-views
-  cookbook`. A cookbook that is not valid JSON, or not UTF-8, counts as out of
-  date, and `cookbook` writes it again.
+- **A merge conflict in `cookbook.json`**: do not resolve it by hand;
+  `datapackage.json` and `useful-views/README.md` usually conflict too. Take
+  either side of each generated file (`git checkout --ours datapackage.json
+  useful-views/README.md cookbook.json`), run `useful-views sync --all` (it
+  runs every recipe again, so it needs the raw data), then `useful-views
+  cookbook`, and `git add` those files. A cookbook that is not valid JSON, or
+  not UTF-8, counts as out of date, and `cookbook` writes it again. See
+  [Records](records.md).
 - **A co-author's clone shows a changed cookbook**: it should not, if both of
-  you ran `sync` and `cookbook` on the same recipes. A difference means the
-  recipes differ; `useful-views cookbook --check` and `useful-views check`
-  say where.
+  you ran `sync` and `cookbook` on the same recipes with the same version of
+  useful-views. A difference means the recipes differ, one of you committed
+  without running `cookbook`, or you use different versions of useful-views.
+  `git diff cookbook.json` shows which recipe and step changed. Keep everyone
+  on the version pinned in the project's environment file.
 
 ## What is next
 

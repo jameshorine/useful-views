@@ -40,8 +40,9 @@ The first release: the minimum version.
   declared.
 - Schemas are read with pyarrow; the generated `datapackage.json` passes
   `frictionless validate`.
-- A documentation site built with great-docs: getting started, concepts, a
-  guide for AI tools, a generated command-line and rules reference, an API
-  reference from the docstrings, and `llms.txt` / `SKILL.md` for coding
-  agents.
+- A documentation site built with great-docs: getting started, concepts
+  (projects, steps, recipes, running, records and the cookbook), a guide for
+  AI tools, a generated command-line and rules reference, an API reference
+  from the docstrings, and `llms.txt` and a hand-written `SKILL.md` for
+  coding agents.
 - Tested on Python 3.11 to 3.14.

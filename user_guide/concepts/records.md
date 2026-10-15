@@ -10,7 +10,8 @@ If a merge leaves git conflict markers in them, do not resolve the conflict
 by hand: take either side (`git checkout --ours datapackage.json
 useful-views/README.md`, and `cookbook.json` if the project has one), then
 run `useful-views sync --all` (and `useful-views cookbook`), and `git add`
-the files. useful-views says so when it finds the markers.
+the files. useful-views says so when it finds markers in `datapackage.json`;
+markers in `cookbook.json` alone are reported as `stale-cookbook`.
 
 ## datapackage.json
 
