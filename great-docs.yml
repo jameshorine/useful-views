@@ -1,0 +1,103 @@
+# Great Docs configuration for useful-views.
+# Build the site with:   uv run --group docs great-docs build
+# Preview it with:       uv run --group docs great-docs preview
+# Pages in user_guide/reference/cli.md, rules.md and check-findings.md are generated:
+#   uv run python scripts/generate_docs.py
+# See https://posit-dev.github.io/great-docs/ for every option.
+
+display_name: useful-views
+
+# The navbar shows the binoculars next to the text title, and the same icon
+# is the browser-tab icon. On the landing page, the hero banner shows the
+# wide logo in the site's light or dark theme, and replaces the README's
+# centered logo-and-badges block (great-docs strips that block).
+logo:
+  light: docs/useful-views-icon.svg
+  dark: docs/useful-views-icon.svg
+  show_title: true
+favicon: docs/useful-views-icon.svg
+
+# Custom CSS (code blocks scroll instead of spilling; see the file).
+site:
+  css: docs/assets/site.css
+hero:
+  enabled: true
+  logo:
+    light: docs/useful-views-logo.svg
+    dark: docs/useful-views-logo-dark.svg
+  logo_height: 140px
+  name: false          # the logo already says "useful-views"
+parser: google
+dynamic: true
+repo: https://github.com/jameshorine/useful-views
+site_url: https://jameshorine.github.io/useful-views/
+
+# The user guide is the Markdown pages in user_guide/, in this order (like the
+# nav: list in an mkdocs.yml). A new page must be added here to be linked;
+# tests/test_docs.py checks that every page is listed. Images and CSS stay in
+# docs/.
+user_guide:
+  - section: Get started
+    contents:
+      - installation.md
+      - quickstart.md
+  - section: Concepts
+    contents:
+      - concepts/projects.md
+      - concepts/steps.md
+      - concepts/recipes.md
+      - concepts/running.md
+      - concepts/records.md
+      - concepts/cookbook.md
+  - section: Guides
+    contents:
+      - guides/ai-tools.md
+  - section: Reference
+    contents:
+      - reference/cli.md
+      - reference/check-findings.md
+      - reference/environment.md
+      - reference/rules.md
+
+reference:
+  - title: Functions
+    desc: Create a project, run its recipes, and report its state.
+    contents:
+      - init
+      - example
+      - new_recipe
+      - run
+      - sync
+      - check
+      - cookbook
+      - root
+  - title: Results
+    desc: What run, sync, check and cookbook return.
+    contents:
+      - RunResult
+      - SyncResult
+      - Finding
+      - CookbookResult
+  - title: Errors and warnings
+    desc: Every error is a UsefulViewsError and carries its facts as attributes and to_dict().
+    contents:
+      - UsefulViewsError
+      - RecipeRefused
+      - StepFailed
+      - OutputError
+      - ProjectError
+      - ProjectNotFound
+      - ExampleError
+      - CookbookError
+      - UsefulViewsWarning
+  - title: Rules
+    desc: The numbered rules a recipe must follow.
+    contents:
+      - RULES
+      - Rule
+
+skill:
+  enabled: true
+  # Written by hand, so it can say how to drive the command line, not only the
+  # Python API. Keep it in step with user_guide/guides/ai-tools.md.
+  file: skills/useful-views/SKILL.md

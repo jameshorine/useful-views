@@ -2,7 +2,7 @@
 
 datapackage.json is the record store: its `recipes` list holds one record
 per recorded recipe, and its `resources` list describes the raw files those
-recipes read and the views they made (SPEC.md sections 7, 8 and 17).
+recipes read and the views they made ("Generated files" in the README).
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import codecs
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -75,24 +76,34 @@ def describe_file(rel: str) -> dict:
     return resource
 
 
-def is_utf8(path: Path) -> bool:
+def scan_text(path: Path) -> tuple[bool, bool]:
+    """Read a file once, in pieces: (is it UTF-8, does it contain "0x")."""
     decoder = codecs.getincrementaldecoder("utf-8-sig")()
+    hex_like = False
+    previous = b""
     try:
         with open(path, "rb") as f:
             while chunk := f.read(1 << 20):
                 decoder.decode(chunk)
+                hex_like = hex_like or b"0x" in (previous + chunk).lower()
+                previous = chunk[-1:]
         decoder.decode(b"", final=True)
     except UnicodeDecodeError:
-        return False
-    return True
+        return False, hex_like
+    return True, hex_like
 
 
-# The forms Frictionless accepts for its default time and datetime formats.
-# Values pyarrow parses in any other form are recorded as strings.
+# The forms Frictionless accepts for its default date, time and datetime
+# formats. Values pyarrow parses in any other form (a date padded with spaces,
+# the year 0000) are recorded as strings.
 DEFAULT_FORMAT = {
+    "date": r"^(000[1-9]|00[1-9]\d|0[1-9]\d\d|[1-9]\d{3})-\d{2}-\d{2}$",  # no year 0000 (RE2: no lookahead)
     "time": r"^\d{2}:\d{2}:\d{2}(\.\d+)?$",
     "datetime": r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$",
 }
+# pyarrow also reads hexadecimal (0x1F) as an integer, which Frictionless does
+# not; integer columns are checked only when the file contains "0x" at all.
+INTEGER_FORMAT = r"^\s*[+-]?\d+\s*$"
 OTHER_DELIMITERS = (";", "\t", "|")
 
 
@@ -100,7 +111,7 @@ def describe_csv(root: Path, rel: str) -> dict:
     """Describe a CSV file, inferring column types over the whole file.
 
     The schema must be one the file passes under the Data Package standard
-    (rule 17), so only empty cells count as missing (a column holding "NA"
+    (frictionless validate passes), so only empty cells count as missing (a column holding "NA"
     is a string column), and times and datetimes in a non-standard form are
     strings. A CSV that is not UTF-8, that pyarrow cannot parse, that has
     blank rows, that is not comma-separated, or whose header names are
@@ -110,7 +121,8 @@ def describe_csv(root: Path, rel: str) -> dict:
     path = root / rel
     with open(path, "rb") as f:
         encoding = "utf-8-sig" if f.read(3) == BOM else "utf-8"
-    if not is_utf8(path):
+    utf8, hex_like = scan_text(path)
+    if not utf8:
         return describe_file(rel)
     parse = pacsv.ParseOptions(ignore_empty_lines=False)
     convert = pacsv.ConvertOptions(null_values=[""], strings_can_be_null=True)
@@ -128,19 +140,26 @@ def describe_csv(root: Path, rel: str) -> dict:
         return describe_file(rel)
     if table.num_rows and names:
         blank = pc.is_null(table.column(0))
+        column = None
         for column in table.columns[1:]:
             blank = pc.and_(blank, pc.is_null(column))
-        if pc.any(blank).as_py():
+        has_blank_row = pc.any(blank).as_py()
+        del blank, column
+        if has_blank_row:
             return describe_file(rel)
 
     fields = schema_of(table.schema)["fields"]
-    checks = {f["name"]: DEFAULT_FORMAT[f["type"]] for f in fields if f["type"] in DEFAULT_FORMAT}
+    del table  # free it before reading again: raw files can be large
+    formats = {**DEFAULT_FORMAT, "integer": INTEGER_FORMAT} if hex_like else DEFAULT_FORMAT
+    checks = {f["name"]: formats[f["type"]] for f in fields if f["type"] in formats}
     if checks:
+        # Only the columns to check, read as text.
         as_text = pacsv.read_csv(
             path,
             parse_options=parse,
             convert_options=pacsv.ConvertOptions(
-                null_values=[""], strings_can_be_null=True, column_types={n: pa.string() for n in checks}
+                null_values=[""], strings_can_be_null=True, column_types={n: pa.string() for n in checks},
+                include_columns=list(checks),
             ),
         )
         for field in fields:
@@ -194,10 +213,22 @@ def load_datapackage(root: Path) -> dict:
         "committed, delete it and run useful-views init, then run each recipe again."
     )
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise ProjectError(f"{path} is missing. {restore}") from exc
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except UnicodeDecodeError as exc:
+        raise ProjectError(f"{path} is not valid JSON ({exc}). {restore}") from exc
+    if re.search(r"^(<<<<<<<|>>>>>>>)( |$)", text, re.MULTILINE):
+        generated = [rel for rel in (DATAPACKAGE, CATALOG, "cookbook.json") if (root / rel).exists()]
+        then = "useful-views sync --all" + (" and useful-views cookbook" if "cookbook.json" in generated else "")
+        raise ProjectError(
+            f"{path} has git merge conflict markers. It is generated, so do not resolve the conflict by hand: "
+            f"take either side (git checkout --ours {' '.join(generated)}), then run {then}, and git add those "
+            "files. sync --all runs every recipe again, so their records come from real runs."
+        )
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
         raise ProjectError(f"{path} is not valid JSON ({exc}). {restore}") from exc
     ok = (
         isinstance(data, dict)
@@ -215,6 +246,14 @@ def load_datapackage(root: Path) -> dict:
     )
     if not ok:
         raise ProjectError(f"{path} does not have the structure useful-views writes. {restore}")
+    for record in data["recipes"]:
+        bad = [o for o in record["outputs"] if not (isinstance(o, str) and RECORD_OUTPUT.match(o))]
+        if not RECORD_NAME.match(record["name"]) or bad:
+            what = f"output {bad[0]!r}" if bad else f"recipe name {record['name']!r}"
+            raise ProjectError(
+                f"{path} records a {what} that useful-views never writes (it was edited by hand, or left by a "
+                f"merge), so nothing is changed. {restore}"
+            )
     return data
 
 
@@ -222,17 +261,32 @@ def raw_inputs(record: dict) -> list[str]:
     return [p for p in record["inputs"] if not p.startswith(f"{VIEWS}/")]
 
 
+# What useful-views itself writes in a record; anything else was put there by
+# hand or by a bad merge, and must never be used to name a file to delete.
+RECORD_NAME = re.compile(r"^[a-z0-9_]+$")
+RECORD_OUTPUT = re.compile(rf"^{re.escape(VIEWS)}/(?!\.\.?$)[^/\\]+$")
+
+# A Data Package name: lowercase letters, digits, '.', '_' and '-'.
+PACKAGE_NAME = re.compile(r"^[a-z0-9._-]+$")
+
+
 def assemble(
     root: Path,
     records: list[dict],
     views: dict[str, dict],
     raws: dict[str, dict],
+    name: object = None,
 ) -> dict:
     """Build datapackage.json from records and resource descriptions.
 
     `views` and `raws` map paths to resources. Only raw files read by a record
     are kept; views are listed under their recipe, recipes in name order.
+    `name` is the package name already recorded: it is kept, so a clone in a
+    folder with another name writes the same file. Only when there is none
+    (or it is not a valid name) does the folder's name give one.
     """
+    if not (isinstance(name, str) and PACKAGE_NAME.fullmatch(name)):
+        name = slug(root.name)
     records = sorted(records, key=lambda r: r["name"])
     used_raw = sorted({p for r in records for p in raw_inputs(r)})
     resources = [raws[p] for p in used_raw if p in raws]
@@ -240,7 +294,7 @@ def assemble(
         for path in sorted(record["outputs"]):
             if path in views:
                 resources.append(views[path])
-    return {"name": slug(root.name), "resources": resources, "recipes": records}
+    return {"name": name, "resources": resources, "recipes": records}
 
 
 def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -252,7 +306,7 @@ def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
 
 
 def render_datapackage(data: dict) -> str:
-    return json.dumps(data, indent=2, ensure_ascii=False)
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 # --- useful-views/README.md -------------------------------------------------
@@ -316,23 +370,32 @@ def _temp_for(path: Path) -> Path:
     return path.with_name(f".{path.name}.{os.getpid()}.tmp")
 
 
-def write_files(files: dict[Path, str]) -> None:
-    """Write UTF-8 files with LF line endings. All are written to temporary
-    files first, then each replaces its target, so a failure while writing
-    leaves every target unchanged."""
+def write_files(files: dict[Path, str]) -> list[Path]:
+    """Write UTF-8 files with LF line endings, and return those that changed.
+    All are written to temporary files first, then each replaces its target,
+    so a failure while writing leaves every target unchanged."""
     temps: dict[Path, Path] = {}
     replaced: dict[Path, bytes | None] = {}
+    current = next(iter(files))  # the file being written, for the message
     try:
         for path, text in files.items():
+            current = path
+            data = text.encode("utf-8")
+            if path.is_file() and path.read_bytes() == data:
+                continue  # unchanged: leave the file, and its timestamp, alone
+            if path.is_dir():
+                raise IsADirectoryError(21, "it is a folder", str(path))
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = _temp_for(path)
             temps[path] = tmp
             with open(tmp, "wb") as f:
-                f.write(text.encode("utf-8"))
+                f.write(data)
         for path, tmp in temps.items():
+            current = path
             previous = path.read_bytes() if path.exists() else None
             retry(lambda: os.replace(tmp, path), path)
             replaced[path] = previous
+        return list(replaced)
     except (OSError, UnicodeError) as exc:
         for path, previous in replaced.items():  # put back what was already replaced
             try:
@@ -342,10 +405,9 @@ def write_files(files: dict[Path, str]) -> None:
                     path.write_bytes(previous)
             except OSError:
                 pass
-        name = getattr(exc, "filename", None) or next(iter(files))
         raise ProjectError(
-            f"Could not write {name}: {getattr(exc, 'strerror', None) or exc}. If another program has it open, close it, "
-            "check that the folder is writable, and try again."
+            f"Could not write {current}: {getattr(exc, 'strerror', None) or exc}. If another program has it open, "
+            "close it, check that the folder is writable, and try again."
         ) from exc
     finally:
         for tmp in temps.values():
@@ -357,8 +419,9 @@ def write_atomic(path: Path, text: str) -> None:
     write_files({path: text})
 
 
-def write_generated(root: Path, data: dict) -> None:
-    """Write datapackage.json and the catalog derived from it."""
+def write_generated(root: Path, data: dict) -> list[Path]:
+    """Write datapackage.json and the catalog derived from it; return the
+    files that changed."""
     # The catalog goes first, so that if writing fails part way the record
     # (datapackage.json) still describes the previous state.
-    write_files({root / CATALOG: render_catalog(data), root / DATAPACKAGE: render_datapackage(data)})
+    return write_files({root / CATALOG: render_catalog(data), root / DATAPACKAGE: render_datapackage(data)})
