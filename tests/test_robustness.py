@@ -103,8 +103,11 @@ def test_the_lock_is_reentrant_in_one_thread(project):
 def test_a_lock_left_by_a_killed_process_does_not_block(project):
     proc = subprocess.Popen([sys.executable, "-c", HOLD_LOCK, str(project)], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, text=True)
-    assert proc.stdout.readline().startswith("locked")
-    proc.kill()
+    word, holder = proc.stdout.readline().split()
+    assert word == "locked"
+    # Kill the process that holds the lock. On Windows, a venv's python.exe is
+    # a launcher that starts the real interpreter as a process of its own.
+    os.kill(int(holder), getattr(signal, "SIGKILL", signal.SIGTERM))
     proc.wait(timeout=30)
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     uvs.sync(root=project)
