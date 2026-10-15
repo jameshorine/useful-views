@@ -93,6 +93,36 @@ def test_the_lock_is_released_when_the_command_ends(project):
     uvs.run("a", root=project)  # released after a failure too
 
 
+def test_the_lock_is_taken_once_even_while_waiting(project, monkeypatch):
+    """Windows refuses a second lock on a region the same handle holds, so
+    taking the lock must try each time only until it succeeds."""
+    from useful_views import lock
+
+    calls = []
+
+    def try_lock(fd):
+        calls.append(fd)
+        if len(calls) > 1:
+            raise AssertionError("tried to lock again after succeeding")
+        return True
+
+    monkeypatch.setattr(lock, "_try_lock", try_lock)
+    monkeypatch.setattr(lock, "WAIT_SECONDS", 2.0)
+    with project_lock(project):
+        pass
+    assert len(calls) == 1
+
+
+def test_a_lock_being_released_is_waited_for(project, monkeypatch):
+    from useful_views import lock
+
+    answers = iter([False, False, True])
+    monkeypatch.setattr(lock, "_try_lock", lambda fd: next(answers))
+    monkeypatch.setattr(lock, "WAIT_SECONDS", 2.0)
+    with project_lock(project):
+        pass
+
+
 def test_the_lock_is_reentrant_in_one_thread(project):
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     with project_lock(project):

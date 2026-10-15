@@ -119,10 +119,14 @@ def project_lock(project: Path, *, enabled: bool = True):
             "writable."
         ) from exc
     try:
+        # Try once, then keep trying until the deadline; never lock twice (on
+        # Windows, locking a region this handle already holds fails).
         deadline = time.monotonic() + WAIT_SECONDS
-        while not _try_lock(fd) and time.monotonic() < deadline:
+        locked = _try_lock(fd)
+        while not locked and time.monotonic() < deadline:
             time.sleep(0.05)
-        if not _try_lock(fd):
+            locked = _try_lock(fd)
+        if not locked:
             raise ProjectError(
                 f"Another useful-views command is already changing this project{_holder(path)}. Commands that "
                 "change a project (run, sync, cookbook) run one at a time: wait for it to finish, then try again."
