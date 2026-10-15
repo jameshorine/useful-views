@@ -13,8 +13,11 @@ from .errors import (
     UsefulViewsError,
     UsefulViewsWarning,
 )
+from .cookbooks import CookbookError, CookbookResult, cookbook
+from .examples import ExampleError, example
 from .new import new_recipe
 from .project import init, root
+from .rulebook import RULES, Rule
 from .runner import RunResult, run
 from .syncing import SyncResult, sync
 
@@ -24,17 +27,24 @@ except PackageNotFoundError:  # running from a source tree that is not installed
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "CookbookError",
+    "CookbookResult",
+    "ExampleError",
     "Finding",
     "OutputError",
     "ProjectError",
     "ProjectNotFound",
+    "RULES",
     "RecipeRefused",
+    "Rule",
     "RunResult",
     "StepFailed",
     "SyncResult",
     "UsefulViewsError",
     "UsefulViewsWarning",
     "check",
+    "cookbook",
+    "example",
     "init",
     "new_recipe",
     "root",

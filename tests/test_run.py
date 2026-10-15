@@ -1,5 +1,5 @@
-"""SPEC section 10 rules 9 to 16 and section 17 "Running": what a run does
-on disk, how steps are launched, and what a failed run leaves behind."""
+"""What a run does on disk, how steps are launched, and what a failed run
+leaves behind ("What run does" in the README)."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def simple_recipe(root: Path, name: str = "r", outputs=(VIEW,), **kw) -> Path:
     return write_recipe(root, name, inputs=[raw], outputs=list(outputs), **kw)
 
 
-# --- rule 11: a failing step ------------------------------------------------
+# --- a failing step ------------------------------------------------------
 
 
 def test_failing_step_leaves_generated_files_unchanged(driver, project):
@@ -158,7 +158,7 @@ def test_module_not_found_names_interpreter(driver, project):
     assert_failed(out, driver, uvs.StepFailed, "01_imp.py", "no_such_module_for_useful_views_tests", sys.executable)
 
 
-# --- rule 12: outputs -------------------------------------------------------
+# --- outputs -------------------------------------------------------------
 
 
 def test_missing_output_is_reported_by_name(driver, project):
@@ -170,7 +170,7 @@ def test_missing_output_is_reported_by_name(driver, project):
     if driver.name == "api":
         assert out.error.paths == ["useful-views/forgotten.parquet"]
     assert generated(project) == before
-    # Any failure after rule 9 deletes every declared output.
+    # Any failure after the old views are cleared deletes every declared output.
     assert not (project / VIEW).exists()
 
 
@@ -233,7 +233,7 @@ def test_outputs_are_deleted_before_the_first_step(driver, project):
     assert out.ok, out.message
 
 
-# --- rule 9: work folder ----------------------------------------------------
+# --- work folder ----------------------------------------------------------
 
 
 def test_work_folder_is_emptied_before_each_run(driver, project):
@@ -270,7 +270,7 @@ def test_run_leaves_other_recipes_work_alone(driver, project):
     assert (project / "work/b/keep.txt").read_text() == "keep\n"
 
 
-# --- rule 10: how steps run -------------------------------------------------
+# --- how steps run --------------------------------------------------------
 
 
 def test_steps_run_in_numeric_order(driver, project):
@@ -405,7 +405,7 @@ def test_failing_step_stderr_is_relayed_live(driver, project, capsys):
         assert "LIVE-ERR" in out.error.stderr
 
 
-# --- rule 14: one recipe only -----------------------------------------------
+# --- one recipe only ------------------------------------------------------
 
 
 def test_downstream_first_is_refused_and_upstream_never_runs(driver, project):
@@ -457,7 +457,7 @@ def test_downstream_run_does_not_rerun_upstream(driver, project):
     assert (project / "useful-views/down.parquet").exists()
 
 
-# --- rule 15: idempotence ---------------------------------------------------
+# --- idempotence ----------------------------------------------------------
 
 
 def test_second_run_is_byte_identical(driver, project):
@@ -472,7 +472,7 @@ def test_second_run_is_byte_identical(driver, project):
     assert generated(project) == first
 
 
-# --- rule 16: other recipes' records ----------------------------------------
+# --- other recipes' records -----------------------------------------------
 
 
 def _two_independent_recipes(driver, project):
@@ -634,7 +634,7 @@ def test_successful_run_records_recipe_and_writes_catalog(driver, project):
                    "description": "Write a small table to each output."}],
     }
     text = (project / "datapackage.json").read_text(encoding="utf-8")
-    assert not text.endswith("\n")
+    assert text.endswith("}\n") and not text.endswith("\n\n")  # one final newline, as editors and pre-commit expect
     catalog = (project / "useful-views/README.md").read_bytes()
     assert catalog.endswith(b"\n") and not catalog.endswith(b"\n\n")
     assert b"\r\n" not in catalog

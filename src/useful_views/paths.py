@@ -6,6 +6,7 @@ import os
 import posixpath
 import re
 import stat
+import unicodedata
 from pathlib import Path
 
 from .errors import UsefulViewsError
@@ -56,6 +57,16 @@ def listdir(folder: Path) -> list[str]:
     except PermissionError as exc:
         raise UnreadableFolder(folder) from exc
     return sorted(n for n in names if not is_ignored(n))
+
+
+def has_content(folder: Path) -> bool:
+    """True if `folder` exists and holds something other than hidden files
+    and tool clutter (.DS_Store, __pycache__): a recipe folder deleted with
+    git, but kept alive by such leftovers, counts as gone."""
+    try:
+        return bool(listdir(folder))
+    except UnreadableFolder:
+        return True
 
 
 def exists_exact(root: Path, rel: str) -> bool:
@@ -155,6 +166,11 @@ def path_problem(rel: object, root: Path | None = None, example: str = "raw/data
                 f"write its path from the project root, like {q(example)}"
             )
         return f"{q(rel)} {reason}; write {q(fixed)}"
+    if "*" in rel or "?" in rel:
+        return (
+            f"{q(rel)} looks like a wildcard pattern, but patterns are not expanded: list each file, "
+            f"like {q(example)}"
+        )
     for part in rel.split("/"):
         if WINDOWS_BAD_CHARS.search(part) or part.endswith((".", " ")) or WINDOWS_RESERVED.match(part):
             return (
@@ -165,14 +181,36 @@ def path_problem(rel: object, root: Path | None = None, example: str = "raw/data
 
 
 def resource_name(rel: str) -> str:
-    """A resource's name: its file name without the extension, made safe for
-    the Data Package standard (lowercase a-z, 0-9, '-', '_', '.')."""
-    stem = rel.rsplit("/", 1)[-1]
-    if "." in stem:
-        stem = stem.rsplit(".", 1)[0]
-    return slug(stem)
+    """A resource's name, made safe for the Data Package standard (lowercase
+    a-z, 0-9, '-', '_', '.'): a view's file name without the extension, and a
+    raw file's path below raw/ without the extension, so raw/wave1/survey.csv
+    is 'wave1-survey' and does not clash with raw/wave2/survey.csv."""
+    below = rel[len(RAW) + 1:] if rel.startswith(f"{RAW}/") else rel.rsplit("/", 1)[-1]
+    folder, _, filename = below.rpartition("/")
+    if "." in filename:
+        filename = filename.rsplit(".", 1)[0]
+    return slug(f"{folder}/{filename}" if folder else filename)
 
 
 def slug(text: str) -> str:
-    """Lowercase, with anything outside ASCII a-z, 0-9, '-', '_', '.' replaced by '-'."""
-    return re.sub(r"[^a-z0-9._-]", "-", text.lower()) or "-"
+    """Lowercase, with accents dropped, other non-ASCII letters written as
+    their Unicode code point (so names in any script stay distinct), and any
+    other character outside a-z, 0-9, '-', '_', '.' replaced by '-'."""
+    out = []
+    after_ascii = False
+    # NFC first, so a name typed with accents (NFC) and one macOS stored
+    # decomposed (NFD) give the same result.
+    for ch in unicodedata.normalize("NFC", text).lower():
+        if re.match(r"[a-z0-9._-]", ch):
+            out.append(ch)
+            after_ascii = True
+        elif ch.isascii():
+            out.append("-")
+            after_ascii = True
+        elif unicodedata.combining(ch) and after_ascii:
+            continue  # an accent NFC could not join to its ASCII letter
+        else:
+            plain = "".join(c for c in unicodedata.normalize("NFKD", ch) if re.match(r"[a-z0-9]", c))
+            out.append(plain or f"u{ord(ch):04x}")
+            after_ascii = bool(plain)
+    return "".join(out) or "-"

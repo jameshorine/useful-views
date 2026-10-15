@@ -1,6 +1,5 @@
-"""File formats: recipe and step text (SPEC sections 6 and 17 'Recipe
-format'), datapackage.json resources and schemas (section 7 and the last
-bullet of 17 'API and CLI'), and the catalog (section 8 and 17 'Catalog')."""
+"""File formats: recipe and step text, datapackage.json resources and
+schemas, and the catalog, useful-views/README.md."""
 
 from __future__ import annotations
 
@@ -137,7 +136,7 @@ def test_step_description(text, expected):
 
 
 def test_step_description_coding_line_after_line_2_is_description():
-    # A coding line counts only on line 1 or 2 (SPEC 17); on line 3 it is a comment.
+    # A coding line counts only on line 1 or 2; on line 3 it is a comment.
     assert step_description("\n\n# coding: utf-8\n# Real.\n") == "coding: utf-8 Real."
 
 
@@ -408,9 +407,11 @@ def test_backslash_output_path_refused_rule_7_with_correction(driver, project):
     [
         ("raw/data.csv", "data"),
         ("raw/Data_File.CSV", "data_file"),
-        ("raw/sub/dir/x.csv", "x"),
+        ("raw/sub/dir/x.csv", "sub-dir-x"),
         ("raw/PWT 11.0 (BRA).csv", "pwt-11.0--bra-"),
-        ("raw/données.csv", "donn-es"),
+        ("raw/données.csv", "donnees"),
+        ("raw/人口.csv", "u4ebau53e3"),
+        ("raw/2024/jan.csv", "2024-jan"),
         ("raw/archive.tar.gz", "archive.tar"),
         ("raw/codebook", "codebook"),
         ("useful-views/pwt-panel.parquet", "pwt-panel"),
@@ -877,7 +878,6 @@ def test_generated_files_lf_only_and_exact_layout(driver, project):
         assert b"\r" not in blob
         blob.decode("utf-8")
         assert not blob.startswith(b"\xef\xbb\xbf")
-    assert not dp.endswith(b"\n")
-    assert dp.decode("utf-8") == json.dumps(json.loads(dp), indent=2, ensure_ascii=False)
+    assert dp.decode("utf-8") == json.dumps(json.loads(dp), indent=2, ensure_ascii=False) + "\n"
     assert cat.endswith(b"\n") and not cat.endswith(b"\n\n")
     assert recorded(project, "demo")["description"] == "CRLF in, LF out."

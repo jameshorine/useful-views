@@ -1,23 +1,27 @@
 """Reading a recipe folder: recipe.toml, its step files and their descriptions.
 
-This module only reads. It checks the recipe's own format (rules 1 to 3 in
-SPEC.md section 10, with the details settled in section 17).
+This module only reads. It checks the recipe's own format (rules 1 to 3
+under "Rules" in the README).
 """
 
 from __future__ import annotations
 
+import os
+import posixpath
 import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .errors import RecipeRefused, warn
-from .paths import RECIPES, is_file, listdir
+from .paths import IGNORED_NAMES, RECIPES, WINDOWS_RESERVED, is_file, listdir
 
 RECIPE_NAME = re.compile(r"^[a-z0-9_]+$")
 STEP_FILE = re.compile(r"^([0-9]{2})_(.+)\.py$")
-OTHER_LANGUAGE_STEP = re.compile(r"^[0-9]{2}_.+\.(R|r|ipynb|Rmd|qmd|jl|do)$")
-NEAR_MISS_STEP = re.compile(r"^[0-9]+[_-].*\.py$")
+OTHER_LANGUAGE_STEP = re.compile(r"^[0-9]{2}_.+\.(r|ipynb|rmd|qmd|jl|do)$", re.IGNORECASE)
+# A comment line that is only decoration, such as "# -----" or "# =====".
+RULE_LINE = re.compile(r"^#\s*([-=*#~_])\1{2,}\s*$")
+PEP723_START = re.compile(r"^# /// [a-zA-Z0-9-]+$")
 KNOWN_KEYS = ("description", "inputs", "outputs")
 TODO = "TODO"
 
@@ -169,11 +173,27 @@ def check_declaration(data: dict, rel: str) -> tuple[str, list[str], list[str], 
 # --- step files -------------------------------------------------------------
 
 
+def _jupytext_header(lines: list[str], start: int) -> bool:
+    """True if the "# ---" at `start` opens a Jupytext header: comment lines
+    up to a closing "# ---", one of them a "jupyter:" or "jupytext:" key."""
+    for line in lines[start + 1:]:
+        line = line.strip()
+        if line == "# ---":
+            return False
+        if not line.startswith("#"):
+            return False
+        if re.match(r"^#\s*(jupyter|jupytext):", line):
+            return True
+    return False
+
+
 def step_description(text: str) -> str:
     """The top comment block of a step file, joined into one line.
 
-    Leading blank lines and machine lines (shebang, coding line, notebook cell
-    markers, a Jupytext header) are skipped first.
+    Leading blank lines and machine lines are skipped first: a shebang, a
+    coding line, notebook cell markers, a Jupytext header, an inline script
+    metadata block (`# /// script` ... `# ///`, PEP 723) and decoration lines
+    such as `# -----`. A decoration line after the description ends it.
     """
     lines = text.split("\n")
     i = 0
@@ -188,18 +208,25 @@ def step_description(text: str) -> str:
             i += 1
         elif re.match(r"^#\s*(%%|In\[.*\]:)", line):
             i += 1
-        elif line == "# ---":
-            i += 1
+        elif line == "# ---" and _jupytext_header(lines, i):
+            i += 1  # a Jupytext header, up to its closing "# ---"
             while i < n and lines[i].strip() != "# ---":
                 i += 1
+            i += 1
+        elif PEP723_START.match(line):
+            i += 1  # inline script metadata, up to its closing "# ///"
+            while i < n and lines[i].strip() != "# ///":
+                i += 1
+            i += 1
+        elif RULE_LINE.match(line):
             i += 1
         else:
             break
     parts = []
     while i < n and lines[i].lstrip().startswith("#"):
         line = lines[i].strip()
-        if re.match(r"^#\s*(%%|In\[.*\]:)", line) or line == "# ---":
-            break  # a notebook cell marker ends the description
+        if re.match(r"^#\s*(%%|In\[.*\]:)", line) or RULE_LINE.match(line) or PEP723_START.match(line):
+            break  # a notebook cell marker or a decoration line ends the description
         after_shebang = i > 0 and lines[i - 1].strip().startswith("#!")
         if line.startswith("#!") or (after_shebang and re.match(r"^#.*coding[:=]\s*[-\w.]+", line)):
             i += 1
@@ -207,6 +234,27 @@ def step_description(text: str) -> str:
         parts.append(re.sub(r"^[#\s]+", "", line))
         i += 1
     return collapse(" ".join(p for p in parts if p))
+
+
+def _near_miss(filename: str) -> str | None:
+    """Why a file named almost like a step is not one, or None if it does not
+    look like a step at all (notes, data, editor backups such as .bak or ~)."""
+    if not re.match(r"^[0-9]+", filename):
+        return None
+    form = "step files are named with exactly two digits, an underscore and a name ending in .py, like 01_clean.py"
+    lower = filename.lower()
+    if re.search(r"\.py\.(txt|rtf)$", lower):
+        return (f"its name ends in {filename[-4:]} after .py, which an editor added (on Windows, turn on File name "
+                f"extensions in Explorer's View menu to see it); {form}.")
+    if lower.endswith(".py"):
+        if not filename.endswith(".py"):
+            return f"its .py is not in lowercase; {form}."
+        if " " in filename:
+            return f"its name has a space; {form}."
+        return f"{form}."
+    if "." not in filename and re.match(r"^[0-9]+[ _-]", filename):
+        return f"it has no .py extension; {form}."
+    return None
 
 
 def find_steps(root: Path, name: str, collected: list[str]) -> list[Step]:
@@ -226,12 +274,8 @@ def find_steps(root: Path, name: str, collected: list[str]) -> list[Step]:
         match = STEP_FILE.fullmatch(filename)
         if match:
             candidates.append((match.group(1), match.group(2), filename))
-        elif NEAR_MISS_STEP.fullmatch(filename):
-            warn(
-                f"{rel} is not run: step files are named with exactly two digits and an underscore, "
-                "like 01_clean.py. Rename it if it is meant to be a step.",
-                collected,
-            )
+        elif (why := _near_miss(filename)) is not None:
+            warn(f"{rel} is not run: {why} Rename it if it is meant to be a step.", collected)
 
     if not candidates:
         raise RecipeRefused(
@@ -280,9 +324,29 @@ def find_steps(root: Path, name: str, collected: list[str]) -> list[Step]:
 # --- whole recipe -----------------------------------------------------------
 
 
+def recipe_name_problem(name: str) -> str | None:
+    """Why a recipe folder name is not allowed, or None."""
+    if not RECIPE_NAME.fullmatch(name):
+        return "use only lowercase letters, digits and underscores, like pwt_panel"
+    if WINDOWS_RESERVED.match(name):
+        return (f"{name} is a reserved device name on Windows, so the folder could not be checked out there; "
+                f"choose another, like {name}_data")
+    if name in IGNORED_NAMES:
+        return f"{name} is a folder name useful-views ignores; choose another, like {name.strip('_')}_data"
+    return None
+
+
 def resolve_name(root: Path, recipe: str) -> str:
-    """Accept 'name', 'recipes/name' or 'recipes/name/'; require exact case."""
+    """Accept 'name', 'recipes/name', './recipes/name/', '.\\recipes\\name\\' or
+    the folder's full path; require exact case."""
     name = recipe.replace("\\", "/").strip()
+    if os.path.isabs(recipe.strip()):
+        try:
+            name = Path(recipe.strip()).resolve().relative_to(root.resolve()).as_posix()
+        except (ValueError, OSError):
+            pass  # outside the project: refused below as no such recipe
+    if name not in ("", ".", "/"):
+        name = posixpath.normpath(name)
     if name.startswith(f"{RECIPES}/"):
         name = name[len(RECIPES) + 1 :]
     name = name.rstrip("/")
@@ -303,10 +367,10 @@ def resolve_name(root: Path, recipe: str) -> str:
             f"There is no recipe folder {RECIPES}/{name}. Existing recipes: {listing}. {hint}",
             path=f"{RECIPES}/{name}" + ("" if name.endswith(".py") else "/"),
         )
-    if not RECIPE_NAME.fullmatch(name):
+    problem = recipe_name_problem(name)
+    if problem:
         raise RecipeRefused(
-            f"The recipe folder name {name!r} is not allowed: use only lowercase letters, digits and "
-            f"underscores. Rename {RECIPES}/{name}/.",
+            f"The recipe folder name {name!r} is not allowed: {problem}. Rename {RECIPES}/{name}/.",
             path=f"{RECIPES}/{name}/",
         )
     return name

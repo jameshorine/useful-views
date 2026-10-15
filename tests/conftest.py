@@ -19,7 +19,10 @@ import pytest
 
 import useful_views as uvs
 
-REFERENCE = Path(__file__).resolve().parent.parent / "reference"
+DATA = Path(__file__).resolve().parent / "data"
+# The PWT example exactly as useful-views-data publishes it, plus the outputs
+# it must produce (datapackage.json, useful-views/).
+REFERENCE = DATA / "examples" / "pwt"
 
 
 @dataclass
@@ -109,7 +112,10 @@ class CliDriver:
         if args and args[0] == "check":
             out.ok = proc.returncode in (0, 1)
             if proc.returncode == 1:
-                out.kinds = [line.split(":", 1)[0] for line in proc.stdout.splitlines() if ":" in line]
+                from useful_views.status import KINDS
+
+                out.kinds = [line.split(":", 1)[0] for line in proc.stdout.splitlines()
+                             if line.split(":", 1)[0] in KINDS]
         return out
 
     def init(self, path: str = ".") -> Outcome:
@@ -126,6 +132,14 @@ class CliDriver:
 
     def sync(self) -> Outcome:
         return self._call("sync")
+
+
+@pytest.fixture(autouse=True)
+def offline_examples(monkeypatch):
+    """example() reads tests/data instead of GitHub, so no test needs the network."""
+    from useful_views.examples import DATA_URL_ENV
+
+    monkeypatch.setenv(DATA_URL_ENV, DATA.as_uri())
 
 
 @pytest.fixture
@@ -195,10 +209,14 @@ def add_raw_csv(root: Path, rel: str = "raw/data.csv", text: str = "id,value\n1,
 
 
 def snapshot(root: Path) -> dict[str, bytes]:
-    """Every file under root, as relative path -> bytes, plus empty folders."""
+    """Every file under root, as relative path -> bytes, plus empty folders.
+    The lock file run and sync hold in work/ is left out: it says nothing
+    about the project."""
     snap = {}
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
+        if rel_dir == "work":
+            filenames = [f for f in filenames if f != ".useful-views.lock"]
         if not dirnames and not filenames:
             snap[rel_dir + "/"] = b""
         for f in filenames:

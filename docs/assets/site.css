@@ -1,0 +1,22 @@
+/* useful-views docs site: small fixes on top of the great-docs theme. */
+
+/* A code line longer than its box scrolls inside the box, instead of
+   spilling past its edge or being cut off. */
+div.sourceCode,
+pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* Tables fit the page and wrap their text, like a normal table. great-docs
+   sizes them to their longest unwrapped line (width: max-content), which
+   makes prose tables scroll sideways. They still scroll if they truly
+   cannot fit, such as on a phone. */
+.gd-table-scroll > table {
+  width: 100%;
+}

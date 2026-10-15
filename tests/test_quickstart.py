@@ -1,27 +1,29 @@
-"""SPEC section 14: docs/quickstart.md exists and its commands work as written.
+"""user_guide/quickstart.md exists and its commands work as written.
 
-The setup block (clone and install) is skipped: the test stands in for it by
-placing the repository's reference/ folder at useful-views/reference and
-putting this environment's scripts on PATH. Every other python block runs in
-one namespace, and every sh block runs in one shell session, each starting
-from that folder.
+The setup blocks (installing the package) are skipped: the test runs in this
+environment, with its scripts on PATH. `example` downloads from tests/data
+instead of GitHub (see the offline_examples fixture). Every other python
+block runs in one namespace, and every sh block runs in one shell session,
+each starting from an empty folder.
 """
 
 from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
+
+import useful_views as uvs
 
 from conftest import REFERENCE
 
-QUICKSTART = Path(__file__).resolve().parent.parent / "docs" / "quickstart.md"
-SKIP = "<!-- quickstart-test: skip -->"
+QUICKSTART = Path(__file__).resolve().parent.parent / "user_guide" / "quickstart.md"
 
 
 def blocks(language: str) -> list[str]:
@@ -34,36 +36,47 @@ def blocks(language: str) -> list[str]:
     return found
 
 
-@pytest.fixture
-def workspace(tmp_path):
-    shutil.copytree(REFERENCE, tmp_path / "useful-views" / "reference")
-    return tmp_path
-
-
 def test_quickstart_exists_with_both_walkthroughs():
     assert QUICKSTART.is_file()
     assert blocks("python") and blocks("sh")
 
 
-def test_quickstart_python(workspace, monkeypatch):
-    monkeypatch.chdir(workspace)
+def test_quickstart_python(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     namespace: dict = {}
     for code in blocks("python"):
         exec(compile(code, str(QUICKSTART), "exec"), namespace)
-    root = workspace / "pwt-notebook"
-    assert (root / "useful-views" / "gdp-per-capita.parquet").is_file()
-    assert (root / "datapackage.json").read_bytes() == (REFERENCE / "datapackage.json").read_bytes().replace(
-        b'"name": "reference"', b'"name": "pwt-notebook"'
-    )
+    root = tmp_path / "pwt-notebook"
+    for view in ("pwt-panel.parquet", "gdp-per-capita.parquet"):
+        assert_frame_equal(
+            pl.read_parquet(root / "useful-views" / view),
+            pl.read_parquet(REFERENCE / "useful-views" / view),
+            check_exact=True,
+        )
+    growth = pl.read_parquet(root / "useful-views" / "growth-since-2000.parquet")
+    assert growth.columns == ["iso", "country", "avg_growth_pct"] and growth.height == 4
+    assert uvs.check(root=root) == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the shell walkthrough uses POSIX commands")
-def test_quickstart_shell(workspace):
+def test_quickstart_shell(tmp_path):
     script = "set -e\n" + "\n".join(blocks("sh"))
     env = dict(os.environ, PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
-    proc = subprocess.run(["bash", "-c", script], cwd=workspace, env=env, capture_output=True, text=True)
+    proc = subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "No problems found." in proc.stdout
     assert "Ran, in order: recipes/gdp_per_capita." in proc.stdout
-    root = workspace / "pwt-cli"
-    assert (root / "useful-views" / "README.md").read_bytes() == (REFERENCE / "useful-views" / "README.md").read_bytes()
+    root = tmp_path / "pwt-cli"
+    assert (root / "useful-views" / "README.md").read_bytes() == (
+        REFERENCE / "useful-views" / "README.md"
+    ).read_bytes()
+
+
+def test_the_refusal_shown_is_the_real_message(tmp_path):
+    text = QUICKSTART.read_text(encoding="utf-8")
+    shown = re.search(r"<!-- quickstart-output: refusal -->\n```text\n(.*?)```", text, re.S).group(1)
+    root = uvs.init(tmp_path / "pwt-notebook")
+    uvs.new_recipe("growth_since_2000", root=root)
+    with pytest.raises(uvs.RecipeRefused) as err:
+        uvs.run("growth_since_2000", root=root)
+    assert shown.rstrip("\n") == str(err.value)

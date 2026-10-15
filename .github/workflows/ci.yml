@@ -10,6 +10,9 @@ name: CI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,13 +21,14 @@ jobs:
   test:
     name: test (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
       - name: Install
         run: uv sync --locked --python ${{ matrix.python }}
@@ -34,29 +38,41 @@ jobs:
   lowest-dependencies:
     name: test (oldest supported pyarrow)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
       - name: Install with pyarrow 16
         run: |
           uv venv --python 3.11
           echo "pyarrow==16.0.0" > constraints.txt
-          uv pip install -c constraints.txt -e . pytest pytest-xdist polars "frictionless[pandas]"
+          # The dev group's bounds (pyproject.toml), with pyarrow held at the oldest supported.
+          uv pip install -c constraints.txt -e . "pytest>=8" "pytest-xdist>=3" "polars>=1.20" "frictionless[pandas]>=5.18,<6"
       - name: Test
         run: .venv/bin/python -m pytest -n auto
 
   package:
     name: build and check the package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
       - name: Build
         run: uv build
       - name: Check metadata
         run: uvx twine check --strict dist/*
-      - name: Install the wheel and run the command
+      - name: Install the wheel and build the real example with it
+        # Downloads the pinned example from GitHub, so it also checks the
+        # pinned tag and checksums, and that the wheel holds its templates.
         run: |
           uv venv --python 3.11 /tmp/wheel-env
-          uv pip install --python /tmp/wheel-env/bin/python dist/*.whl
+          uv pip install --python /tmp/wheel-env/bin/python dist/*.whl polars
+          cd /tmp
           /tmp/wheel-env/bin/useful-views --version
+          /tmp/wheel-env/bin/useful-views example pwt smoke
+          /tmp/wheel-env/bin/useful-views -C smoke sync
+          /tmp/wheel-env/bin/useful-views -C smoke check
+          /tmp/wheel-env/bin/useful-views -C smoke cookbook
+          /tmp/wheel-env/bin/useful-views -C smoke cookbook --check
+          test -f smoke/AGENTS.md

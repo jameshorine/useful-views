@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "generator": "useful-views",
+  "project": "reference",
+  "raw_inputs": [
+    "raw/pwt110_bra_deu_esp_usa.csv"
+  ],
+  "recipes": [
+    {
+      "name": "pwt_panel",
+      "description": "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States.",
+      "path": "recipes/pwt_panel",
+      "inputs": [
+        "raw/pwt110_bra_deu_esp_usa.csv"
+      ],
+      "outputs": [
+        "useful-views/pwt-panel.parquet"
+      ],
+      "steps": [
+        {
+          "name": "reshape_long",
+          "path": "recipes/pwt_panel/01_reshape_long.py",
+          "description": "Reshape the wide export (one column per year) into one row per country, variable and year."
+        },
+        {
+          "name": "keep_core_variables",
+          "path": "recipes/pwt_panel/02_keep_core_variables.py",
+          "description": "Keep eight core variables: three measures of GDP, population, employment, hours worked, human capital and TFP."
+        },
+        {
+          "name": "pivot_to_panel",
+          "path": "recipes/pwt_panel/03_pivot_to_panel.py",
+          "description": "Spread the variables into columns, giving one row per country and year."
+        }
+      ]
+    },
+    {
+      "name": "gdp_per_capita",
+      "description": "GDP per capita, its annual growth, and its level relative to the United States.",
+      "path": "recipes/gdp_per_capita",
+      "inputs": [
+        "useful-views/pwt-panel.parquet"
+      ],
+      "outputs": [
+        "useful-views/gdp-per-capita.parquet"
+      ],
+      "steps": [
+        {
+          "name": "derive_measures",
+          "path": "recipes/gdp_per_capita/01_derive_measures.py",
+          "description": "Compute GDP per capita (rgdpe / pop, in 2021 US$), its annual growth in percent (from rgdpna / pop, the series PWT recommends for growth over time), and its level relative to the United States in the same year."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# The test data is compared byte for byte and pinned by SHA-256, so git must
+# never change its line endings (core.autocrlf on Windows would).
+tests/data/** -text
+*.parquet binary
