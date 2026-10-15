@@ -13,6 +13,7 @@ import contextlib
 import errno
 import os
 import threading
+import time
 from pathlib import Path
 
 from .errors import ProjectError
@@ -26,6 +27,11 @@ _local = threading.local()
 # On Windows the lock is a byte range, which no other process can read while
 # it is held: lock one far past the process number written at the start.
 WINDOWS_LOCK_OFFSET = 1 << 20
+
+# Windows releases the locks of a process that was killed a moment after the
+# process is gone, so wait that long before saying another command holds it.
+# Elsewhere the release is immediate.
+WAIT_SECONDS = 2.0 if os.name == "nt" else 0.0
 
 # Errors that mean another process holds the lock (msvcrt raises EACCES or
 # EDEADLOCK; flock raises EWOULDBLOCK/EAGAIN, as BlockingIOError).
@@ -113,7 +119,14 @@ def project_lock(project: Path, *, enabled: bool = True):
             "writable."
         ) from exc
     try:
-        if not _try_lock(fd):
+        # Try once, then keep trying until the deadline; never lock twice (on
+        # Windows, locking a region this handle already holds fails).
+        deadline = time.monotonic() + WAIT_SECONDS
+        locked = _try_lock(fd)
+        while not locked and time.monotonic() < deadline:
+            time.sleep(0.05)
+            locked = _try_lock(fd)
+        if not locked:
             raise ProjectError(
                 f"Another useful-views command is already changing this project{_holder(path)}. Commands that "
                 "change a project (run, sync, cookbook) run one at a time: wait for it to finish, then try again."
