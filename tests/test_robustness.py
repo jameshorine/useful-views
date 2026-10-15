@@ -93,6 +93,36 @@ def test_the_lock_is_released_when_the_command_ends(project):
     uvs.run("a", root=project)  # released after a failure too
 
 
+def test_the_lock_is_taken_once_even_while_waiting(project, monkeypatch):
+    """Windows refuses a second lock on a region the same handle holds, so
+    taking the lock must try each time only until it succeeds."""
+    from useful_views import lock
+
+    calls = []
+
+    def try_lock(fd):
+        calls.append(fd)
+        if len(calls) > 1:
+            raise AssertionError("tried to lock again after succeeding")
+        return True
+
+    monkeypatch.setattr(lock, "_try_lock", try_lock)
+    monkeypatch.setattr(lock, "WAIT_SECONDS", 2.0)
+    with project_lock(project):
+        pass
+    assert len(calls) == 1
+
+
+def test_a_lock_being_released_is_waited_for(project, monkeypatch):
+    from useful_views import lock
+
+    answers = iter([False, False, True])
+    monkeypatch.setattr(lock, "_try_lock", lambda fd: next(answers))
+    monkeypatch.setattr(lock, "WAIT_SECONDS", 2.0)
+    with project_lock(project):
+        pass
+
+
 def test_the_lock_is_reentrant_in_one_thread(project):
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     with project_lock(project):
@@ -103,8 +133,11 @@ def test_the_lock_is_reentrant_in_one_thread(project):
 def test_a_lock_left_by_a_killed_process_does_not_block(project):
     proc = subprocess.Popen([sys.executable, "-c", HOLD_LOCK, str(project)], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, text=True)
-    assert proc.stdout.readline().startswith("locked")
-    proc.kill()
+    word, holder = proc.stdout.readline().split()
+    assert word == "locked"
+    # Kill the process that holds the lock. On Windows, a venv's python.exe is
+    # a launcher that starts the real interpreter as a process of its own.
+    os.kill(int(holder), getattr(signal, "SIGKILL", signal.SIGTERM))
     proc.wait(timeout=30)
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     uvs.sync(root=project)
