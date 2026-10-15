@@ -31,9 +31,15 @@ Every command takes `--json`. Standard output then carries exactly one JSON
 document, on success and on failure; everything else goes to standard error.
 
 ```sh
-useful-views check --json          # {"ok": false, "findings": [{"kind": ..., "path": ..., "rule": ...}]}
-useful-views sync --json           # {"ok": true, "ran": [...], "removed": [...], ...}
-useful-views run pwt_panel --json  # on failure: {"ok": false, "error": {"type": "StepFailed", "step": ..., "stderr": ...}}
+useful-views check --json
+# {"ok": false, "findings": [{"kind": ..., "path": ..., "rule": ...}]}
+
+useful-views sync --json
+# {"ok": true, "ran": [...], "removed": [...], ...}
+
+useful-views run pwt_panel --json
+# on failure:
+# {"ok": false, "error": {"type": "StepFailed", "step": ..., "stderr": ...}}
 ```
 
 `-C <path>` runs a command in another folder, like `git -C`, so an assistant

@@ -28,8 +28,16 @@ it describes files in both `raw/` and `useful-views/`.
   "scheme": "file",
   "format": "parquet",
   "mediatype": "application/parquet",
-  "schema": {"fields": [{"name": "iso", "type": "string"}, {"name": "year", "type": "integer"}]},
-  "producedBy": {"recipe": "gdp_per_capita", "inputs": ["useful-views/pwt-panel.parquet"]}
+  "schema": {
+    "fields": [
+      {"name": "iso", "type": "string"},
+      {"name": "year", "type": "integer"}
+    ]
+  },
+  "producedBy": {
+    "recipe": "gdp_per_capita",
+    "inputs": ["useful-views/pwt-panel.parquet"]
+  }
 }
 ```
 

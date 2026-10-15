@@ -1,9 +1,9 @@
 cff-version: 1.2.0
 message: "If you use useful-views in your research, please cite it as below."
 type: software
-title: "useful-views: documented derived tables for research data projects"
+title: "useful-views: Documented derived tables for data projects"
 abstract: >-
-  A Python package that gives a research data project a fixed structure, in
+  A Python package that gives a data project a fixed structure, in
   which every derived table (a "useful view") records the recipe, inputs and
   steps that made it, in a standard Data Package.
 authors:

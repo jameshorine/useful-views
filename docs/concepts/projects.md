@@ -9,13 +9,13 @@ everything is.
 
 ```text
 my-data-project/
-├── README.md          # written by you: what the project is, where the data came from
+├── README.md          # written by you: the project and its data sources
 ├── datapackage.json   # generated: what each recipe made from what
 ├── .gitignore         # written once by init
 ├── raw/               # raw inputs, placed by hand; never written by a recipe
 ├── recipes/           # one folder per recipe, written by you
-├── work/              # in-between files, one folder per recipe, emptied before each run
-└── useful-views/      # the views the recipes declare, plus the generated catalog README.md
+├── work/              # in-between files, one folder per recipe
+└── useful-views/      # the declared views, plus the generated catalog
 ```
 
 Create one with `useful-views init my-data-project`, or start from a

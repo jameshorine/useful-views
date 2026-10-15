@@ -21,7 +21,7 @@ steps' libraries the same way, for example `uv add polars`. Run commands with
 
 ```sh
 python -m venv .venv
-source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 pip install useful-views
 ```
 

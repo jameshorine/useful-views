@@ -11,7 +11,7 @@ data; how much a step does is up to you.
 ```text
 recipes/pwt_panel/
 ├── recipe.toml                 # description, inputs, outputs
-├── 01_reshape_long.py          # one file = one step; its top comment is its description
+├── 01_reshape_long.py          # one step; its top comment describes it
 ├── 02_keep_core_variables.py
 └── 03_pivot_to_panel.py
 ```
@@ -46,12 +46,16 @@ can.
 ## Steps
 
 ```python
-# Reshape the wide export (one column per year) into one row per country, variable and year.
+# Reshape the wide export (one column per year) into one row per country,
+# variable and year.
 import polars as pl
 
 wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")
-long = wide.unpivot(index=["ISO code", "Country", "Variable code", "Variable name"],
-                    variable_name="year", value_name="value")
+long = wide.unpivot(
+    index=["ISO code", "Country", "Variable code", "Variable name"],
+    variable_name="year",
+    value_name="value",
+)
 long.write_parquet("work/pwt_panel/long.parquet")
 ```
 

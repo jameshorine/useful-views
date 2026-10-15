@@ -24,7 +24,7 @@ With uv:
 ```sh
 uv init --bare                     # creates a pyproject.toml for this folder
 uv add useful-views polars
-source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 ```
 
 With pip:
@@ -32,7 +32,7 @@ With pip:
 <!-- quickstart-test: skip -->
 ```sh
 python -m venv .venv
-source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 pip install useful-views polars
 ```
 
@@ -65,7 +65,7 @@ It created this:
 ```text
 pwt-notebook/
 ├── README.md          # what the example is, and the data credit
-├── datapackage.json   # the record of what each recipe made; empty until a recipe runs
+├── datapackage.json   # the record of what each recipe made; empty for now
 ├── .gitignore         # keeps raw data, work files and views out of git
 ├── raw/
 │   └── pwt110_bra_deu_esp_usa.csv
@@ -145,9 +145,11 @@ except uvs.RecipeRefused as err:
 
 ```text
 recipes/growth_since_2000/recipe.toml needs fixing:
-  - `description` still starts with TODO: replace it with one sentence saying what this recipe produces
+  - `description` still starts with TODO: replace it with one sentence
+    saying what this recipe produces
   - `inputs` is empty: list at least one path, like inputs = ["raw/my_data.csv"]
-  - `outputs` is empty: list at least one path, like outputs = ["useful-views/my-view.parquet"]
+  - `outputs` is empty: list at least one path, like
+    outputs = ["useful-views/my-view.parquet"]
 ```
 
 Normally you would now edit the two files in your editor. Here Python writes
@@ -156,7 +158,7 @@ description, and its paths are the same strings as in `recipe.toml`:
 
 ```python
 (folder / "recipe.toml").write_text(
-    'description = "Average annual growth of GDP per capita since 2000, by country."\n'
+    'description = "Average annual growth of GDP per capita since 2000."\n'
     'inputs  = ["useful-views/gdp-per-capita.parquet"]\n'
     'outputs = ["useful-views/growth-since-2000.parquet"]\n'
 )
@@ -175,7 +177,8 @@ description, and its paths are the same strings as in `recipe.toml`:
     'growth.write_parquet("useful-views/growth-since-2000.parquet")\n'
 )
 print(uvs.sync(root=root).ran)  # ('growth_since_2000',)
-print(pl.read_parquet(uvs.root() / "useful-views" / "growth-since-2000.parquet"))
+growth = uvs.root() / "useful-views" / "growth-since-2000.parquet"
+print(pl.read_parquet(growth))
 ```
 
 The catalog now lists three views.

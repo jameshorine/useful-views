@@ -16,6 +16,10 @@ logo:
   dark: docs/useful-views-icon.svg
   show_title: true
 favicon: docs/useful-views-icon.svg
+
+# Custom CSS (code blocks scroll instead of spilling; see the file).
+site:
+  css: docs/assets/site.css
 hero:
   enabled: true
   logo:
