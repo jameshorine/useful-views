@@ -9,12 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .errors import UsefulViewsError, warn
-from .paths import CATALOG, RECIPES, VIEWS, UnreadableFolder, exists_exact, listdir
+from .errors import ProjectError, UsefulViewsError, warn
+from .paths import CATALOG, RECIPES, VIEWS, UnreadableFolder, exists_exact, has_content, listdir
 from .project import find_root
 from .recipe import declared_paths, read_declaration
-from .record import load_datapackage
-from .cookbooks import COOKBOOK, expected_text
+from .record import load_datapackage, render_catalog
+from .cookbooks import COOKBOOK, read_cookbook, build, render
 from .syncing import plan_sync
 
 # Every kind of finding, in the order check() reports them, with its meaning.
@@ -28,9 +28,19 @@ KIND_MEANINGS = {
     "missing-recipe-folder": "datapackage.json records a recipe whose folder is gone. sync removes the record.",
     "missing-view": "A recorded view whose file is missing.",
     "stale-cookbook": "cookbook.json does not match the recorded recipes. Update it with useful-views cookbook.",
+    "stale-catalog": "useful-views/README.md does not match datapackage.json (edited by hand, or left from a "
+                     "merge). useful-views sync writes it again.",
     "stray-file": "A file or folder in useful-views/, other than README.md, that no recipe makes.",
 }
 KINDS = tuple(KIND_MEANINGS)
+
+# Kinds that `useful-views sync` resolves by itself.
+SYNCABLE = frozenset({"never-run", "out-of-date", "missing-view", "missing-recipe-folder", "stale-catalog"})
+
+
+def syncable(finding: "Finding") -> bool:
+    """True if `useful-views sync` resolves this finding by itself."""
+    return finding.kind in SYNCABLE or (finding.kind == "missing-input" and finding.reason == "made-by-recipe")
 
 
 @dataclass(frozen=True)
@@ -40,11 +50,19 @@ class Finding:
     Attributes:
         kind: What kind of problem: one of "unreadable-recipe", "refused",
             "missing-input", "never-run", "out-of-date", "missing-recipe-folder",
-            "missing-view" or "stray-file" (see `KIND_MEANINGS`).
+            "missing-view", "stale-cookbook", "stale-catalog" or "stray-file".
+            The check findings reference lists what each means.
         path: The file or folder concerned, relative to the project root.
         message: What is wrong and what to do about it.
         rule: For `refused`, the number of the broken rule; otherwise None.
         recipe: The recipe concerned, when there is one.
+        reason: For `out-of-date`, why: "changed" (its recipe.toml or steps
+            no longer match its record), "outputs-changed" (it no longer
+            declares any view it made), "outputs-dropped" (it no longer
+            declares some of them; sync removes them without running it) or
+            "upstream" (a view it reads will be made again). For
+            `missing-input`, "made-by-recipe" when the input is a view
+            another recipe makes, which sync makes first. Otherwise None.
     """
 
     kind: str
@@ -52,13 +70,14 @@ class Finding:
     message: str
     rule: int | None = None
     recipe: str | None = None
+    reason: str | None = None
 
     def __str__(self) -> str:
         return self.message
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "path": self.path, "message": self.message, "rule": self.rule,
-                "recipe": self.recipe}
+                "recipe": self.recipe, "reason": self.reason}
 
 
 def check(*, root: str | Path | None = None) -> list[Finding]:
@@ -88,13 +107,13 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
 
     declared: dict[str, dict] = {}
     for name in listdir(project / RECIPES):
-        if not (project / RECIPES / name).is_dir():
+        if not (project / RECIPES / name).is_dir() or not has_content(project / RECIPES / name):
             continue
         rel = f"{RECIPES}/{name}/recipe.toml"
         try:
             declared[name] = read_declaration(project, name)
         except UsefulViewsError as exc:
-            findings.append(Finding("unreadable-recipe", rel, str(exc).split("\n")[0]))
+            findings.append(Finding("unreadable-recipe", rel, str(exc).split("\n")[0], recipe=name))
             continue
     missing_inputs: set[str] = set()
 
@@ -124,11 +143,13 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                 fix = f"No recipe makes it; correct the path in {RECIPES}/{name}/recipe.toml"
             else:
                 fix = f"Put the file there, or correct the path in {RECIPES}/{name}/recipe.toml"
+            made = rel.startswith(f"{VIEWS}/") and bool(makers) and "capital letters" not in problem
             findings.append(
-                Finding("missing-input", rel, f"{rel}, an input of {RECIPES}/{name}, {problem}. {fix}.", recipe=name)
+                Finding("missing-input", rel, f"{rel}, an input of {RECIPES}/{name}, {problem}. {fix}.", recipe=name,
+                        reason="made-by-recipe" if made else None)
             )
 
-    unreadable = {f.path.split("/")[1] for f in findings if f.kind == "unreadable-recipe"}
+    unreadable = {f.recipe for f in findings if f.kind == "unreadable-recipe"}
     for refusal in plan.refusals:
         if refusal.recipe in unreadable or getattr(refusal, "missing_input", None) in missing_inputs:
             continue  # already reported more specifically
@@ -163,26 +184,47 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                     f"{RECIPES}/{name}",
                     f"{RECIPES}/{name} is out of date: {why[reason]}. Bring it up to date with: useful-views sync",
                     recipe=name,
+                    reason=reason,
+                )
+            )
+
+    def folder_present(name: str) -> bool:
+        return exists_exact(project, f"{RECIPES}/{name}") and has_content(project / RECIPES / name)
+
+    for name, record in records.items():
+        loaded = plan.loaded.get(name)
+        if loaded is None or name in plan.reasons or name in reported:
+            continue
+        dropped = [o for o in record["outputs"] if o not in loaded.outputs]
+        if dropped:
+            findings.append(
+                Finding(
+                    "out-of-date",
+                    f"{RECIPES}/{name}",
+                    f"{RECIPES}/{name} no longer declares {', '.join(dropped)}, which its record in datapackage.json "
+                    "still lists. useful-views sync removes it from the record and deletes the file.",
+                    recipe=name,
+                    reason="outputs-dropped",
                 )
             )
 
     for name, record in records.items():
-        if not exists_exact(project, f"{RECIPES}/{name}"):
+        if not folder_present(name):
             findings.append(
                 Finding(
                     "missing-recipe-folder",
                     f"{RECIPES}/{name}",
-                    f"{RECIPES}/{name} is recorded in datapackage.json but its folder no longer exists. "
-                    "If it was removed on purpose, run useful-views sync.",
+                    f"{RECIPES}/{name} is recorded in datapackage.json but its folder no longer exists (or holds "
+                    "only hidden files). If it was removed on purpose, run useful-views sync.",
                     recipe=name,
                 )
             )
 
     for name, record in records.items():
         for rel in record["outputs"]:
-            if exists_exact(project, rel) or rel in gone:
+            if (exists_exact(project, rel) and (project / rel).is_file()) or rel in gone:
                 continue  # present, or no longer declared: sync removes it from the record
-            if exists_exact(project, f"{RECIPES}/{name}"):
+            if folder_present(name):
                 fix = "Make it again with: useful-views sync"
             else:
                 fix = "Its folder no longer exists; if it was removed on purpose, run useful-views sync."
@@ -195,14 +237,32 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                 )
             )
 
-    cookbook_file = project / COOKBOOK
-    if cookbook_file.is_file() and cookbook_file.read_text(encoding="utf-8") != expected_text(project):
+    try:
+        current = read_cookbook(project)
+        stale = current is not None and current != render(build(data))
+        problem = "does not match the recorded recipes"
+    except ProjectError as exc:
+        stale, problem = True, f"cannot be read ({exc})"
+    try:
+        catalog = (project / CATALOG).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        catalog = None
+    if catalog != render_catalog(data):
+        findings.append(
+            Finding(
+                "stale-catalog",
+                CATALOG,
+                f"{CATALOG} does not match datapackage.json: it was edited by hand, deleted, or left from a "
+                "merge. It is generated; useful-views sync writes it again.",
+            )
+        )
+
+    if stale:
         findings.append(
             Finding(
                 "stale-cookbook",
                 COOKBOOK,
-                f"{COOKBOOK} does not match the recorded recipes. Once the project is in sync, update it "
-                "with: useful-views cookbook",
+                f"{COOKBOOK} {problem}. Once the project is in sync, update it with: useful-views cookbook",
             )
         )
 

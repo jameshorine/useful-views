@@ -21,6 +21,7 @@ from .paths import (
     VIEWS,
     UnreadableFolder,
     exists_exact,
+    has_content,
     is_file,
     listdir,
     path_problem,
@@ -47,7 +48,7 @@ def gather_others(root: Path, data: dict, own: str, collected: list[str]) -> Oth
     declared = {}
     folders, unreadable, missing_toml = set(), set(), set()
     for name in listdir(root / RECIPES):
-        if not (root / RECIPES / name).is_dir():
+        if not (root / RECIPES / name).is_dir() or not has_content(root / RECIPES / name):
             continue
         folders.add(name)
         if name == own:
@@ -57,7 +58,11 @@ def gather_others(root: Path, data: dict, own: str, collected: list[str]) -> Oth
         except PermissionError:
             has_toml = True  # read_declaration below reports it
         if not has_toml:
-            warn(f"{RECIPES}/{name}/ has no recipe.toml, so it is not treated as a recipe.", collected)
+            warn(
+                f"{RECIPES}/{name}/ has no recipe.toml, so it is not treated as a recipe; check and cookbook "
+                "report it until you add one or move the folder out of recipes/.",
+                collected,
+            )
             unreadable.add(name)
             missing_toml.add(name)
             continue
@@ -168,8 +173,11 @@ def check_raw_readable(root: Path, rel: str, toml: str) -> None:
         with open(path, "rb") as f:
             head = f.read(4)
             if rel.lower().endswith(".parquet"):
-                f.seek(-4, os.SEEK_END)
-                tail = f.read(4)
+                size = f.seek(0, os.SEEK_END)
+                tail = b""
+                if size >= 12:  # the smallest parquet file: two markers and a footer length
+                    f.seek(-4, os.SEEK_END)
+                    tail = f.read(4)
                 if head != b"PAR1" or tail != b"PAR1":
                     raise RecipeRefused(
                         f"Raw input {rel!r} declared in {toml} is not a valid parquet file. Replace it with a "
@@ -336,10 +344,24 @@ def check_names(recipe: Recipe, others: Others) -> None:
         if len(clash) > 1 and own & set(clash):  # a clash between other recipes is not this one's doing
             mine = sorted(own & set(clash))[0]
             other = next(p for p in clash if p != mine)
+            fix = "Rename one of them so their names differ before the extension."
+            # The other file may be only in an old record, about to be replaced.
+            for holder, record in sorted(others.records.items()):
+                inputs, outputs = others.declared.get(holder, ([], []))
+                if (other in record["outputs"] or other in record["inputs"]) and other not in inputs + outputs:
+                    if holder not in others.folders or holder in others.unreadable:
+                        fix = f"{other} is only in the record of {RECIPES}/{holder}. " + recorded_maker_problem(
+                            others, holder)
+                    else:
+                        fix = (
+                            f"{other} is only in the record of {RECIPES}/{holder}, whose recipe.toml no longer "
+                            f"lists it: run useful-views run {holder} first, so its record is up to date, then try "
+                            "again. Or rename one of them so their names differ before the extension."
+                        )
+                    break
             raise RecipeRefused(
                 f"Recording {recipe.path} would give two files the same resource name {name!r}: "
-                f"{min(mine, other)} and {max(mine, other)}. Rename one of them so their names differ before "
-                "the extension.",
+                f"{min(mine, other)} and {max(mine, other)}. {fix}",
                 rule=8,
                 path=f"{recipe.path}/recipe.toml",
             )

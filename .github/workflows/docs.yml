@@ -11,10 +11,14 @@ name: CI Docs
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-docs:
     name: "Build Docs"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,7 +36,7 @@ jobs:
       - name: Check the generated reference pages are up to date
         run: |
           uv run python scripts/generate_docs.py
-          git diff --exit-code docs/reference
+          git diff --exit-code user_guide/reference
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -49,7 +53,7 @@ jobs:
 
       - name: How to preview this build locally
         if: github.event_name == 'pull_request'
-        run: great-docs ci notice --run ${{ github.run_id }} --pr ${{ github.event.number }}
+        run: uv run --group docs great-docs ci notice --run ${{ github.run_id }} --pr ${{ github.event.number }}
 
       - name: Upload build timings
         uses: actions/upload-artifact@v7

@@ -209,10 +209,14 @@ def add_raw_csv(root: Path, rel: str = "raw/data.csv", text: str = "id,value\n1,
 
 
 def snapshot(root: Path) -> dict[str, bytes]:
-    """Every file under root, as relative path -> bytes, plus empty folders."""
+    """Every file under root, as relative path -> bytes, plus empty folders.
+    The lock file run and sync hold in work/ is left out: it says nothing
+    about the project."""
     snap = {}
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
+        if rel_dir == "work":
+            filenames = [f for f in filenames if f != ".useful-views.lock"]
         if not dirnames and not filenames:
             snap[rel_dir + "/"] = b""
         for f in filenames:

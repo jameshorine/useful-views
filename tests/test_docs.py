@@ -1,4 +1,5 @@
-"""The generated reference pages in docs/reference/ match the code.
+"""The user guide: generated reference pages match the code, and every page
+is in the sidebar.
 
 If this fails, regenerate them: uv run python scripts/generate_docs.py
 """
@@ -18,13 +19,18 @@ spec.loader.exec_module(generate_docs)
 
 @pytest.mark.parametrize("name", sorted(generate_docs.PAGES))
 def test_generated_page_is_up_to_date(name):
-    page = ROOT / "docs" / "reference" / name
+    page = ROOT / "user_guide" / "reference" / name
     assert page.read_text(encoding="utf-8") == generate_docs.PAGES[name](), (
-        f"docs/reference/{name} is out of date; run: uv run python scripts/generate_docs.py"
+        f"user_guide/reference/{name} is out of date; run: uv run python scripts/generate_docs.py"
     )
 
 
-def test_every_guide_page_names_its_section():
-    for page in (ROOT / "docs").rglob("*.md"):
-        text = page.read_text(encoding="utf-8")
-        assert text.startswith("---\n") and "\nguide-section: " in text.split("\n---\n", 1)[0], page
+def test_every_guide_page_is_in_the_sidebar():
+    """great-docs.yml lists the user guide's pages in order; a page left out
+    would be built but never linked."""
+    import re
+
+    config = (ROOT / "great-docs.yml").read_text(encoding="utf-8")
+    listed = re.findall(r"^\s+- ([\w/.-]+\.md)\s*$", config.split("\nuser_guide:", 1)[1].split("\n\n", 1)[0], re.M)
+    pages = sorted(p.relative_to(ROOT / "user_guide").as_posix() for p in (ROOT / "user_guide").rglob("*.md"))
+    assert sorted(listed) == pages and len(listed) == len(set(listed))

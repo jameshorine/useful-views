@@ -687,12 +687,24 @@ def test_rule7_output_claimed_by_record_whose_folder_is_gone(driver, project):
 # --- rule 8: resource name collisions ------------------------------------------
 
 
-def test_rule8_two_raw_inputs_same_file_name(driver, project):
+def test_rule8_same_file_name_in_different_raw_folders_is_fine(driver, project):
+    """A raw file's resource name includes its folders below raw/, so survey
+    waves stored as raw/wave1/x.csv and raw/wave2/x.csv do not clash."""
     add_raw_csv(project, "raw/a/x.csv")
     add_raw_csv(project, "raw/b/x.csv")
     make_recipe(project, inputs=("raw/a/x.csv", "raw/b/x.csv"))
+    out = driver.run("a")
+    assert out.ok, out.message
+    names = {r["path"]: r["name"] for r in json.loads((project / "datapackage.json").read_text())["resources"]}
+    assert names["raw/a/x.csv"] == "a-x" and names["raw/b/x.csv"] == "b-x"
+
+
+def test_rule8_raw_path_and_file_name_that_collide(driver, project):
+    add_raw_csv(project, "raw/a/x.csv")
+    add_raw_csv(project, "raw/a-x.csv")
+    make_recipe(project, inputs=("raw/a/x.csv", "raw/a-x.csv"))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=8, path=TOML_A, path_in_message=False, mentions=["raw/a/x.csv", "raw/b/x.csv"])
+    assert_refused(driver, project, "a", rule=8, path=TOML_A, path_in_message=False, mentions=["raw/a/x.csv", "raw/a-x.csv"])
 
 
 def test_rule8_raw_input_and_view_same_name(driver, project):
@@ -713,11 +725,11 @@ def test_rule8_raw_inputs_differing_only_in_extension(driver, project):
 def test_rule8_names_that_collide_after_cleaning(driver, project):
     """'My Data' and 'my-data' both become the resource name 'my-data'."""
     add_raw_csv(project, "raw/My Data.csv")
-    add_raw_csv(project, "raw/sub/my-data.csv")
-    make_recipe(project, inputs=("raw/My Data.csv", "raw/sub/my-data.csv"))
+    add_raw_csv(project, "raw/my-data.csv")
+    make_recipe(project, inputs=("raw/My Data.csv", "raw/my-data.csv"))
     seed_leftovers(project)
     assert_refused(driver, project, "a", rule=8, path=TOML_A, path_in_message=False,
-                   mentions=["raw/My Data.csv", "raw/sub/my-data.csv"])
+                   mentions=["raw/My Data.csv", "raw/my-data.csv"])
 
 
 def test_rule8_two_outputs_differing_only_in_case(driver, project):
@@ -737,13 +749,21 @@ def test_rule8_view_collides_with_raw_file_of_another_record(driver, project):
 
 
 def test_rule8_raw_collides_with_raw_file_of_another_record(driver, project):
+    add_raw_csv(project, "raw/b-x.csv")
     add_raw_csv(project, "raw/b/x.csv")
-    add_raw_csv(project, "raw/a/x.csv")
-    make_recipe(project, "b", inputs=("raw/b/x.csv",), outputs=("useful-views/b-view.parquet",))
+    make_recipe(project, "b", inputs=("raw/b-x.csv",), outputs=("useful-views/b-view.parquet",))
     uvs.run("b", root=project)
-    make_recipe(project, inputs=("raw/a/x.csv",))
+    make_recipe(project, inputs=("raw/b/x.csv",))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=8, path=TOML_A, path_in_message=False, mentions=["raw/a/x.csv", "raw/b/x.csv"])
+    assert_refused(driver, project, "a", rule=8, path=TOML_A, path_in_message=False, mentions=["raw/b-x.csv", "raw/b/x.csv"])
+
+
+def test_rule8_names_in_other_scripts_stay_distinct(driver, project):
+    add_raw_csv(project, "raw/人口.csv")
+    add_raw_csv(project, "raw/收入.csv")
+    make_recipe(project, inputs=("raw/人口.csv", "raw/收入.csv"))
+    out = driver.run("a")
+    assert out.ok, out.message
 
 
 def test_rule8_raw_collides_with_view_of_another_record(driver, project):
@@ -819,11 +839,11 @@ def test_unreadable_other_recipe_toml_does_not_block_rule5_via_records(driver, p
     make_recipe(project, inputs=(vb,))
     seed_leftovers(project)
     out = driver.run("a")
-    if not out.ok:
-        assert out.exit_code == 3
-        assert "Traceback" not in out.stderr
-        if driver.name == "api":
-            assert isinstance(out.error, uvs.RecipeRefused)
+    assert not out.ok and out.exit_code == 3
+    assert "Traceback" not in out.stderr
+    assert "recipes/b/recipe.toml cannot be read" in out.message
+    if driver.name == "api":
+        assert isinstance(out.error, uvs.RecipeRefused) and out.error.rule == 5
 
 
 # --- which recipe to run ------------------------------------------------------

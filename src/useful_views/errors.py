@@ -47,8 +47,7 @@ class ProjectNotFound(ProjectError):
 
 
 class RecipeRefused(UsefulViewsError):
-    """A recipe was refused because it breaks a rule; nothing on disk changed
-    because of it.
+    """A recipe was refused because it breaks a rule; nothing on disk changed.
 
     Attributes:
         rule: The number of the broken rule (see `useful_views.RULES` or
@@ -86,13 +85,17 @@ class RecipeRefused(UsefulViewsError):
 
 
 class StepFailed(UsefulViewsError):
-    """A step exited with an error. Nothing was recorded, and the recipe's views
-    were removed; its work files are kept for inspection.
+    """A step exited with an error, so nothing was recorded.
+
+    The recipe's views were removed; its work files are kept for inspection.
 
     Attributes:
         step: The step file, relative to the project root.
-        returncode: The step's exit code.
-        stderr: Everything the step wrote to its error output.
+        returncode: The step's exit code; negative when a signal stopped it
+            (on Linux and macOS: -9 is SIGKILL, often from running out of
+            memory).
+        stderr: What the step wrote to its error output: all of it, or its
+            last 64 KB, with a note saying how much came before.
         recipe: The recipe the step belongs to.
     """
 
@@ -110,6 +113,7 @@ class StepFailed(UsefulViewsError):
 
 class OutputError(UsefulViewsError):
     """After the steps ran, a declared output was missing, empty or unreadable.
+
     Nothing was recorded, and the recipe's views were removed.
 
     Attributes:
@@ -135,7 +139,9 @@ class UsefulViewsWarning(UserWarning):
     """Something worth knowing that does not stop the operation."""
 
 
-warnings.simplefilter("always", UsefulViewsWarning)
+# Show every warning, not only the first from each line of code. Appended, so
+# filters the user sets (python -W error, PYTHONWARNINGS) still come first.
+warnings.filterwarnings("always", category=UsefulViewsWarning, append=True)
 
 
 def warn(message: str, collected: list[str] | None = None) -> None:

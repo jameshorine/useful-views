@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -85,11 +86,11 @@ def test_json_success_outputs(project):
     out = cli("sync", "--json", cwd=project)
     data = json.loads(out.stdout)  # the step's own print must not break the JSON
     assert out.returncode == 0 and data == {"ok": True, "removed": [], "dropped": [], "deleted": [],
-                                            "ran": ["a"], "warnings": []}
+                                            "ran": ["a"], "reasons": {"a": "never-run"}, "warnings": []}
     assert "hello from the step" in out.stderr and "useful-views: running recipes/a" in out.stderr
     data = json.loads(cli("run", "a", "--json", cwd=project).stdout)
     assert data == {"ok": True, "recipe": "a", "outputs": ["useful-views/a.parquet"], "warnings": []}
-    assert json.loads(cli("check", "--json", cwd=project).stdout) == {"ok": True, "findings": []}
+    assert json.loads(cli("check", "--json", cwd=project).stdout) == {"ok": True, "findings": [], "warnings": []}
 
 
 def test_json_refusal(project):
@@ -283,7 +284,7 @@ def test_json_usage_errors(tmp_path, args):
 
 def test_json_and_dash_c_after_the_command(project, tmp_path):
     out = cli("check", "--json", "-C", str(project), cwd=tmp_path)
-    assert out.returncode == 0 and json.loads(out.stdout) == {"ok": True, "findings": []}
+    assert out.returncode == 0 and json.loads(out.stdout) == {"ok": True, "findings": [], "warnings": []}
 
 
 def test_json_is_ascii_on_any_console(project):
@@ -310,3 +311,97 @@ def test_main_restores_the_working_directory(project, tmp_path, monkeypatch):
     cli_module.main(["-C", str(project), "check"])
     import os
     assert os.getcwd() == str(tmp_path)
+
+
+# --- the --json contract: one document, one error shape ----------------------------
+
+ERROR_KEYS = {"type", "message", "recipe", "sync_result"}
+
+
+@pytest.mark.parametrize("args", [["--version", "--json"], ["--json", "--help"], ["check", "--help", "--json"],
+                                  ["sync", "-h", "--json"]])
+def test_help_and_version_answer_in_json(tmp_path, args):
+    out = cli(*args, cwd=tmp_path)
+    data = json.loads(out.stdout)
+    assert out.returncode == 0 and data["ok"] is True
+    if "--version" in args:
+        assert data == {"ok": True, "version": uvs.__version__, "warnings": []}
+    else:
+        assert "usage: useful-views" in data["help"] and "usage:" in out.stderr and data["warnings"] == []
+
+
+@pytest.mark.parametrize("args", [["check", "--js"], ["sync", "--al"], ["--json=yes", "check"]])
+def test_abbreviated_or_valued_flags_are_usage_errors(tmp_path, args):
+    out = cli(*args, cwd=tmp_path)
+    assert out.returncode == 2
+    if any(a.startswith("--json") for a in args):
+        assert json.loads(out.stdout)["error"]["type"] == "UsageError"
+
+
+def test_every_error_has_the_same_keys(project, tmp_path, monkeypatch, capsys):
+    from useful_views import cli as cli_module
+
+    assert ERROR_KEYS <= set(json.loads(cli("bogus", "--json", cwd=tmp_path).stdout)["error"])
+    assert ERROR_KEYS <= set(json.loads(cli("run", "nope", "--json", cwd=project).stdout)["error"])
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("something unexpected")
+
+    monkeypatch.setattr(cli_module, "check", crash)
+    assert cli_module.main(["-C", str(project), "check", "--json"]) == 3
+    captured = capsys.readouterr()
+    error = json.loads(captured.out)["error"]
+    assert ERROR_KEYS <= set(error) and error["type"] == "RuntimeError"
+    assert "RuntimeError: something unexpected" in captured.err and "Traceback" not in captured.err
+
+
+def test_warnings_reach_every_json_document(project):
+    simple(project)
+    (project / "recipes" / "a" / "1_not_a_step.py").write_text("# Not run.\n", encoding="utf-8")
+    for args in (["check", "--json"], ["sync", "--json"], ["cookbook", "--check", "--json"]):
+        data = json.loads(cli(*args, cwd=project).stdout)
+        assert any("1_not_a_step.py is not run" in w for w in data["warnings"]), args
+    out = cli("check", cwd=project)
+    assert "No problems found (1 warning above)." in out.stdout
+
+
+def test_importing_the_package_respects_warning_filters(project, tmp_path):
+    simple(project)
+    (project / "recipes" / "a" / "1_not_a_step.py").write_text("# Not run.\n", encoding="utf-8")
+    code = ("import sys, useful_views as uvs\n"
+            "try:\n    uvs.check(root=sys.argv[1])\nexcept uvs.UsefulViewsWarning:\n    print('raised')\n")
+    out = subprocess.run([sys.executable, "-W", "error::UserWarning", "-c", code, str(project)],
+                         capture_output=True, text=True)
+    assert out.stdout.strip() == "raised", out.stderr
+
+
+def test_sync_says_when_a_view_moved_to_another_recipe(project):
+    raw = add_raw_csv(project)
+    write_recipe(project, "a", inputs=[raw], outputs=["useful-views/shared.parquet"])
+    uvs.sync(root=project)
+    write_recipe(project, "a", inputs=[raw], outputs=["useful-views/a.parquet"])
+    write_recipe(project, "b", inputs=[raw], outputs=["useful-views/shared.parquet"])
+    out = cli("sync", cwd=project)
+    assert out.returncode == 0, out.stderr
+    assert "Moved to another recipe: useful-views/shared.parquet (now made by recipes/b)." in out.stdout
+    assert "no recipe declares" not in out.stdout
+
+
+def test_warnings_reach_the_json_whatever_the_python_warning_filters(project):
+    simple(project)
+    (project / "recipes" / "a" / "1_not_a_step.py").write_text("# Not run.\n", encoding="utf-8")
+    out = subprocess.run([sys.executable, "-m", "useful_views", "check", "--json"], cwd=project,
+                         capture_output=True, text=True, env={**os.environ, "PYTHONWARNINGS": "ignore"})
+    assert any("1_not_a_step.py is not run" in w for w in json.loads(out.stdout)["warnings"])
+
+
+def test_a_deleted_working_folder_is_a_usage_error_not_a_traceback(monkeypatch, capsys):
+    from useful_views import cli as cli_module
+
+    def gone():
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(cli_module.os, "getcwd", gone)
+    assert cli_module.main(["check", "--json"]) == 2
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert error["type"] == "UsageError" and "no longer exists" in error["message"]

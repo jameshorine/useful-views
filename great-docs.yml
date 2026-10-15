@@ -1,7 +1,7 @@
 # Great Docs configuration for useful-views.
 # Build the site with:   uv run --group docs great-docs build
 # Preview it with:       uv run --group docs great-docs preview
-# Pages in docs/reference/cli.md, rules.md and check-findings.md are generated:
+# Pages in user_guide/reference/cli.md, rules.md and check-findings.md are generated:
 #   uv run python scripts/generate_docs.py
 # See https://posit-dev.github.io/great-docs/ for every option.
 
@@ -32,10 +32,32 @@ dynamic: true
 repo: https://github.com/jameshorine/useful-views
 site_url: https://jameshorine.github.io/useful-views/
 
-# The user guide is docs/. Each page names its sidebar section in its front
-# matter (guide-section); pages are ordered by path: docs/ first, then
-# concepts/, guides/ and reference/.
-user_guide: docs
+# The user guide is the Markdown pages in user_guide/, in this order (like the
+# nav: list in an mkdocs.yml). A new page must be added here to be linked;
+# tests/test_docs.py checks that every page is listed. Images and CSS stay in
+# docs/.
+user_guide:
+  - section: Get started
+    contents:
+      - installation.md
+      - quickstart.md
+  - section: Concepts
+    contents:
+      - concepts/projects.md
+      - concepts/steps.md
+      - concepts/recipes.md
+      - concepts/running.md
+      - concepts/records.md
+      - concepts/cookbook.md
+  - section: Guides
+    contents:
+      - guides/ai-tools.md
+  - section: Reference
+    contents:
+      - reference/cli.md
+      - reference/check-findings.md
+      - reference/environment.md
+      - reference/rules.md
 
 reference:
   - title: Functions
@@ -50,7 +72,7 @@ reference:
       - cookbook
       - root
   - title: Results
-    desc: What run, sync and check return.
+    desc: What run, sync, check and cookbook return.
     contents:
       - RunResult
       - SyncResult
@@ -76,27 +98,6 @@ reference:
 
 skill:
   enabled: true
-  gotchas:
-    - "Never edit datapackage.json or useful-views/README.md; useful-views writes them after each successful run."
-    - "sync does not notice edits inside a step's code; after such an edit use `useful-views sync --all`."
-    - "Paths in recipe.toml are relative to the project root, use forward slashes, and must be the same strings the step code uses."
-    - "Steps run from the project root with the same Python as useful-views; their libraries must be installed there."
-    - "A view used as an input must be an output of another recipe; work/<recipe>/ files are private to their recipe."
-  best_practices:
-    - "Start with `useful-views check --json`: it lists every refusal and every recipe sync would run."
-    - "Use `useful-views sync` to build; it refuses before changing anything and lists every problem at once."
-    - "Use `--json` and `-C <path>` when scripting; standard output then carries exactly one JSON document."
-    - "Create recipes with `useful-views new-recipe <name>` and replace every TODO."
-  decision_table:
-    - need: "See what is wrong, or what sync would do"
-      use: "useful-views check --json"
-    - need: "Build everything that is missing or changed"
-      use: "useful-views sync"
-    - need: "Rebuild everything after editing step code"
-      use: "useful-views sync --all"
-    - need: "Run one recipe"
-      use: "useful-views run <recipe>"
-    - need: "List the rules"
-      use: "useful-views rules"
-    - need: "Record the recipes used, for review or CI"
-      use: "useful-views cookbook (and cookbook --check in CI)"
+  # Written by hand, so it can say how to drive the command line, not only the
+  # Python API. Keep it in step with user_guide/guides/ai-tools.md.
+  file: skills/useful-views/SKILL.md

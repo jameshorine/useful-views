@@ -16,7 +16,7 @@ from useful_views.recipe import Step, step_description
 from useful_views.record import describe_raw, render_catalog
 from useful_views.runner import run_step
 
-from conftest import add_raw_csv, make_views_step, write, write_recipe
+from conftest import add_raw_csv, write, write_recipe
 
 
 def validate(root: Path) -> subprocess.CompletedProcess:
@@ -34,7 +34,7 @@ def test_step_output_is_relayed_while_the_step_runs(project, monkeypatch):
         # Print, then wait.
         import time
         print("first", flush=False)
-        time.sleep(1.5)
+        time.sleep(6)
     """)
     seen = []
 
@@ -52,20 +52,21 @@ def test_step_output_is_relayed_while_the_step_runs(project, monkeypatch):
     code, _ = run_step(project, Step("slow", "recipes/a/01_slow.py", "Print, then wait."))
     assert code == 0
     first = next(t for t, text in seen if "first" in text)
-    assert first - start < 1.0, "output should arrive before the step ends"
+    # Generous, for loaded CI machines: what matters is well before the step's 6 s.
+    assert first - start < 4.0, "output should arrive before the step ends"
 
 
 def test_background_process_holding_pipes_does_not_block_run(project):
     write(project, "recipes/a/01_spawn.py", """
         # Start a background process that outlives the step.
         import subprocess, sys
-        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(8)"])
+        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
         print("step done")
     """)
     start = time.monotonic()
     code, _ = run_step(project, Step("spawn", "recipes/a/01_spawn.py", "x"))
     assert code == 0
-    assert time.monotonic() - start < 6
+    assert time.monotonic() - start < 20  # not the background process's 30 s
 
 
 def test_unencodable_step_output_is_not_dropped(project, monkeypatch, capsys):
@@ -86,10 +87,10 @@ def test_missing_module_hint_names_interpreter_and_package(project):
     with pytest.raises(uvs.StepFailed) as err:
         uvs.run("a", root=project)
     assert sys.executable in str(err.value)
-    assert "uv pip install" in str(err.value)
+    assert "pip install" in str(err.value) or "uv add" in str(err.value)
 
 
-def test_cli_turns_unexpected_errors_into_exit_3(project):
+def test_cli_refusal_exits_3_without_a_traceback(project):
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     (project / "work").mkdir(exist_ok=True)
     proc = subprocess.run([sys.executable, "-m", "useful_views", "run", "nope"], cwd=project,
@@ -152,9 +153,15 @@ def test_absolute_path_inside_project_is_corrected(project):
     assert "write 'raw/prices.csv'" in message
 
 
-@pytest.mark.parametrize("rel", ["useful-views/a:b.parquet", "raw/CON.csv", "raw/x?.csv", "raw/dir./x.csv"])
+@pytest.mark.parametrize("rel", ["useful-views/a:b.parquet", "raw/CON.csv", "raw/x<1>.csv", "raw/dir./x.csv"])
 def test_names_impossible_on_windows_are_refused(rel):
     assert "Windows" in path_problem(rel)
+
+
+@pytest.mark.parametrize("rel", ["raw/*.csv", "raw/2024-??.csv", "raw/*/data.csv"])
+def test_wildcards_are_explained(rel):
+    message = path_problem(rel)
+    assert "wildcard" in message and "list each file" in message and "Windows" not in message
 
 
 def test_new_recipe_rejects_trailing_newline(project):
@@ -221,7 +228,7 @@ def test_gitignore_with_bom_is_not_reported_as_incomplete(tmp_path):
 
     folder = tmp_path / "p"
     folder.mkdir()
-    (folder / ".gitignore").write_bytes(b"\xef\xbb\xbfraw/*\r\n!raw/.gitkeep\r\nwork/\r\nuseful-views/*.parquet\r\n")
+    (folder / ".gitignore").write_bytes(b"\xef\xbb\xbfraw/*\r\n!raw/.gitkeep\r\nwork/\r\nuseful-views/*.parquet\r\n")  # old lines, BOM, CRLF
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         uvs.init(folder)
@@ -249,6 +256,10 @@ def test_failure_after_steps_removes_outputs(project, monkeypatch):
 
 
 CSV_SHAPES = {
+    "hex_integers": b"id,code\n1,0x1F\n2,12\n",
+    "padded_integers": b"id,n\n1, 12\n2,13 \n",
+    "year_zero_date": b"id,d\n1,0000-01-01\n2,2020-01-01\n",
+    "padded_date": b"id,d\n1,2020-01-01 \n2,2021-02-03\n",
     "plain": b"a,b\n1,2.5\n",
     "bom": b"\xef\xbb\xbfa,b\n1,2\n",
     "na": b"a,b\n1,NA\n2,3\n",
@@ -299,3 +310,16 @@ def test_root_argument_expands_home(project, monkeypatch):
     monkeypatch.setenv("HOME", str(project.parent))
     monkeypatch.setenv("USERPROFILE", str(project.parent))
     assert uvs.check(root=f"~/{project.name}") == []
+
+
+def test_values_frictionless_rejects_are_recorded_as_strings(tmp_path):
+    (tmp_path / "raw").mkdir()
+
+    def types(name: str) -> dict:
+        (tmp_path / f"raw/{name}.csv").write_bytes(CSV_SHAPES[name])
+        return {f["name"]: f["type"] for f in describe_raw(tmp_path, f"raw/{name}.csv")["schema"]["fields"]}
+
+    assert types("hex_integers") == {"id": "integer", "code": "string"}
+    assert types("padded_integers") == {"id": "integer", "n": "integer"}
+    assert types("year_zero_date")["d"] == "string"
+    assert types("padded_date")["d"] == "string"

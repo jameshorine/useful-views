@@ -634,7 +634,7 @@ def test_successful_run_records_recipe_and_writes_catalog(driver, project):
                    "description": "Write a small table to each output."}],
     }
     text = (project / "datapackage.json").read_text(encoding="utf-8")
-    assert not text.endswith("\n")
+    assert text.endswith("}\n") and not text.endswith("\n\n")  # one final newline, as editors and pre-commit expect
     catalog = (project / "useful-views/README.md").read_bytes()
     assert catalog.endswith(b"\n") and not catalog.endswith(b"\n\n")
     assert b"\r\n" not in catalog

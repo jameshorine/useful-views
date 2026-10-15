@@ -1,11 +1,16 @@
 ---
 title: "Records"
-guide-section: Concepts
 ---
 
 After each successful run, useful-views rewrites two files: the record,
 `datapackage.json`, and a readable catalog, `useful-views/README.md`. Never
 edit them by hand; if one is damaged, restore it from git.
+
+If a merge leaves git conflict markers in them, do not resolve the conflict
+by hand: take either side (`git checkout --ours datapackage.json
+useful-views/README.md`, and `cookbook.json` if the project has one), then
+run `useful-views sync --all` (and `useful-views cookbook`), and `git add`
+the files. useful-views says so when it finds the markers.
 
 ## datapackage.json
 
@@ -47,8 +52,11 @@ cell counts as missing, so a column that marks missing values with `NA` or
 `.` is recorded as `string`. Other raw formats (`.dta`, `.xlsx`, ...), and
 CSVs that are not plain comma-separated UTF-8, are recorded without columns.
 
-A resource's name is its file name without the extension, lowercased, with
-other characters than `a-z`, `0-9`, `.`, `_` and `-` turned into `-`. Two
+A resource's name is a view's file name, or a raw file's path below `raw/`,
+without the extension, lowercased, with `/` and other characters than
+`a-z`, `0-9`, `.`, `_` and `-` turned into `-`: `raw/wave1/survey.csv` is
+`wave1-survey`. Accented letters lose their accents, and letters of other
+scripts are written as their Unicode code point, so names stay distinct. Two
 recorded files may not share one ([rule 8](../reference/rules.md)).
 
 ## useful-views/README.md
@@ -61,37 +69,9 @@ anything.
 
 ## cookbook.json
 
-The cookbook is the project's ledger of the recipes it uses, written by a
-command, the way `uv lock` writes `uv.lock`:
-
-```sh
-useful-views cookbook           # write or update cookbook.json
-useful-views cookbook --check   # exit 1 if it is missing or out of date (for CI)
-```
-
-It lists every recorded recipe in run order, upstream first, with its
-description, inputs, outputs and steps, and the raw inputs the recipes read.
-It is generated from `datapackage.json`, so the project must be in sync
-first: `cookbook` refuses, and says why, while `check` reports anything other
-than stray files. Writing an unchanged cookbook leaves the file untouched.
-Commit it to git; `check` reports `stale-cookbook` when it no longer matches.
-
-```json
-{
-  "version": 1,
-  "generator": "useful-views",
-  "project": "my-project",
-  "raw_inputs": ["raw/pwt110_bra_deu_esp_usa.csv"],
-  "recipes": [
-    {"name": "pwt_panel", "description": "...", "steps": ["..."]},
-    {"name": "gdp_per_capita", "description": "...", "steps": ["..."]}
-  ]
-}
-```
-
-This is version 1 of the format. Later versions are planned to add the
-SHA-256 of every raw input, recipe file, step and view, and the environment
-the steps ran in, so that `cookbook --check` can tell when anything changed.
+From this record, `useful-views cookbook` writes a third file you commit:
+`cookbook.json`, the ledger of every recipe the project uses, in run order,
+with its steps. See [Cookbook](cookbook.md).
 
 ## What the record does not track yet
 

@@ -1,6 +1,5 @@
 ---
 title: "Quickstart"
-guide-section: Get started
 ---
 
 This walkthrough starts from a ready-made example project, runs its recipes,
@@ -18,23 +17,26 @@ Work in a new, empty folder. Install useful-views together with polars,
 which the example's steps use, into one Python environment. Use uv or pip,
 whichever you prefer.
 
-With uv:
+With uv, which also fetches a suitable Python for you:
 
 <!-- quickstart-test: skip -->
 ```sh
 uv init --bare                     # creates a pyproject.toml for this folder
 uv add useful-views polars
-source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 ```
 
-With pip:
+With pip, after checking that `python3 --version` says 3.11 or newer:
 
 <!-- quickstart-test: skip -->
 ```sh
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+python3 -m venv .venv              # Windows: py -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install useful-views polars
 ```
+
+[Installation](installation.md) covers Windows, conda and notebooks in more
+detail.
 
 Steps run with the same Python as useful-views, so whatever library your
 steps import must be installed in that environment too: `uv add <package>`
@@ -65,6 +67,7 @@ It created this:
 ```text
 pwt-notebook/
 ├── README.md          # what the example is, and the data credit
+├── AGENTS.md          # instructions for AI coding assistants
 ├── datapackage.json   # the record of what each recipe made; empty for now
 ├── .gitignore         # keeps raw data, work files and views out of git
 ├── raw/
@@ -143,13 +146,13 @@ except uvs.RecipeRefused as err:
     print(err)
 ```
 
+<!-- quickstart-output: refusal -->
 ```text
 recipes/growth_since_2000/recipe.toml needs fixing:
-  - `description` still starts with TODO: replace it with one sentence
-    saying what this recipe produces
+  - `description` still starts with TODO: replace it with one sentence saying what this recipe produces
   - `inputs` is empty: list at least one path, like inputs = ["raw/my_data.csv"]
-  - `outputs` is empty: list at least one path, like
-    outputs = ["useful-views/my-view.parquet"]
+  - `outputs` is empty: list at least one path, like outputs = ["useful-views/my-view.parquet"]
+(Rule 1: recipe.toml is complete. To see every rule: useful-views rules)
 ```
 
 Normally you would now edit the two files in your editor. Here Python writes
@@ -193,22 +196,52 @@ cd pwt-cli
 useful-views run pwt_panel
 useful-views sync
 useful-views check
+useful-views cookbook
 cat useful-views/README.md
 ```
 
 `sync` runs only `gdp_per_capita`, since `pwt_panel` is already up to date,
-and `useful-views check` prints `No problems found.` To add a recipe of your
-own, `useful-views new-recipe <name>` writes the template; edit its two files
-as above, then `useful-views sync`.
+and `useful-views check` prints `No problems found.` `useful-views cookbook`
+writes `cookbook.json`, the list of every recipe and its steps in run order
+(see [Cookbook](concepts/cookbook.md)).
+To add a recipe of your own, `useful-views new-recipe <name>` writes the
+template; edit its two files as above, then `useful-views sync`.
+
+Steps are code: `run` and `sync` execute the Python in `recipes/` with your
+permissions. Read the recipes of a project you did not write before running
+them.
+
+## Start your own project
+
+For a real project, keep the environment files in the project folder, so
+they are committed with it:
+
+<!-- quickstart-test: skip -->
+```sh
+mkdir my-project
+cd my-project
+uv init --bare
+uv add useful-views polars
+uv run useful-views init
+```
+
+`init` makes the structure next to `pyproject.toml`. Put your raw files in
+`raw/`, say in `README.md` where each came from, and add recipes with
+`useful-views new-recipe <name>`.
 
 ## What to commit
 
 `git init` in the project folder, then commit everything git does not
-ignore: `README.md`, `recipes/`, `datapackage.json`, `.gitignore`,
-`raw/.gitkeep` and `useful-views/README.md`. The raw data, `work/` and the
-parquet views stay out of git. A teammate who clones the project places the
-raw files as your `README.md` describes, then runs `useful-views sync`, which
-makes every view again, upstream first.
+ignore: `README.md`, `AGENTS.md`, `recipes/`, `datapackage.json`,
+`cookbook.json`, `.gitignore`, `raw/.gitkeep` and `useful-views/README.md`,
+and the files that list your steps' libraries (`pyproject.toml` and
+`uv.lock`, or `requirements.txt`). The raw data, `work/` and the parquet
+views stay out of git. Before each commit, run `useful-views sync`, then
+`useful-views cookbook`.
+
+A teammate who clones the project installs the libraries (`uv sync`),
+places the raw files as your `README.md` describes, then runs
+`useful-views sync`, which makes every view again, upstream first.
 
 ## Changing things later
 
@@ -216,17 +249,21 @@ makes every view again, upstream first.
 |---|---|
 | add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync`: it runs that recipe and everything downstream of it |
 | edit the code inside a step | `useful-views sync --all`, or `run` that recipe and then each recipe downstream of it. (`sync` alone does not notice code changes yet.) |
+| replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`, which `sync` notices) |
+| `git pull`, merge, or switch branches | `useful-views sync --all`: the views are not in git, so they still come from the recipes as they were |
 | delete a recipe folder, or remove an output from a recipe | `useful-views sync`: it removes the old records and view files |
 | rename a recipe folder | change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync` |
-| clone the project on another computer | place the raw files, then `useful-views sync` |
-| want to know if anything is missing or broken | `useful-views check` (it does not notice edited recipes; `useful-views sync` runs what changed) |
+| clone the project on another computer | install the libraries, place the raw files, then `useful-views sync` |
+| want to know if anything is missing or broken | `useful-views check`. It notices edited `recipe.toml` files, added or removed steps and changed top comments, but not edits to a step's code or to a file's contents. |
 
 ## When something is refused
 
-Every refusal names the file to fix and says how. `run` refuses before
-anything on disk changes; `sync` checks each recipe just before running it,
-so what it has already done is kept, and the message says so. The common
-ones:
+Every refusal names the file to fix and the rule it broke, and says how to
+fix it. `run` and `sync` both refuse before anything on disk changes: `sync`
+checks every recipe first and lists every problem at once. Only a failure
+while a recipe is running (a step that fails, or a view that was not
+written) stops a `sync` part way; what it had already done is kept, and the
+message says what that was and which command to run next. The common ones:
 
 - **An input does not exist**: check the path in `recipe.toml` against the
   file, including capital letters. If it is another recipe's view, run that
@@ -242,7 +279,7 @@ ones:
   output. A `ModuleNotFoundError` means the package is not installed in the
   environment useful-views runs in; the message gives the install command.
 
-The README lists [every rule](https://github.com/jameshorine/useful-views#rules).
+[Rules](reference/rules.md) lists every rule; so does `useful-views rules`.
 
 ## References
 

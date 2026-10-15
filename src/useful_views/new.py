@@ -7,7 +7,7 @@ from pathlib import Path
 from .errors import RecipeRefused
 from .paths import RECIPES, VIEWS, exists_exact
 from .project import find_root, template
-from .recipe import RECIPE_NAME
+from .recipe import recipe_name_problem
 from .record import write_atomic
 
 
@@ -19,7 +19,8 @@ def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
     reports it as refused.
 
     Args:
-        name: Lowercase letters, digits and underscores, like `"pwt_panel"`.
+        name: Lowercase letters, digits and underscores, like `"pwt_panel"`,
+            and not a name Windows reserves (con, aux, nul, prn, com1...).
         root: The project folder. By default it is found by walking up from
             the current folder to `datapackage.json`.
 
@@ -31,12 +32,9 @@ def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
         ProjectNotFound: No project was found.
     """
     project = find_root(root)
-    if not RECIPE_NAME.fullmatch(name):
-        raise RecipeRefused(
-            f"{name!r} is not a valid recipe name: use only lowercase letters, digits and underscores, "
-            "like pwt_panel.",
-            path=f"{RECIPES}/{name}/",
-        )
+    problem = recipe_name_problem(name)
+    if problem:
+        raise RecipeRefused(f"{name!r} is not a valid recipe name: {problem}.", path=f"{RECIPES}/{name}/")
     folder = project / RECIPES / name
     if folder.exists() or exists_exact(project, f"{RECIPES}/{name}"):
         raise RecipeRefused(

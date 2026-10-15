@@ -456,7 +456,15 @@ def test_api_and_cli_report_the_same_findings_in_the_same_order(project):
 
     printed = [line for line in cli.stdout.splitlines() if line.split(":", 1)[0] in KINDS]
     assert printed == api
-    assert cli.stdout.rstrip().endswith("run useful-views sync.")
+    # Some findings (refused, unreadable) are not for sync to fix.
+    assert cli.stdout.rstrip().endswith("Fix the other findings first; then useful-views sync makes or updates "
+                                        "the rest, upstream first.")
+
+
+def test_check_points_to_sync_when_sync_can_fix_everything(project):
+    write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
+    out = CliDriver(project).check()
+    assert out.stdout.rstrip().endswith("run: useful-views sync")
 
 
 def test_cli_exit_codes(project):
@@ -623,7 +631,7 @@ def test_sync_removes_a_deleted_recipe_its_record_and_its_view_files(driver, pro
     assert ran(driver, out) == []
     if isinstance(driver, ApiDriver):
         assert out.value.removed == ("alpha",)
-        assert out.value.deleted == ("useful-views/alpha.parquet",)
+        assert out.value.deleted == ("useful-views/alpha.parquet", "work/alpha/")
     else:
         assert "recipes/alpha" in out.stdout and "useful-views/alpha.parquet" in out.stdout
     data = load(project)
@@ -730,12 +738,26 @@ def test_sync_leaves_a_folder_without_recipe_toml_alone(project):
     assert load(project) == data
 
 
-def test_sync_recomputes_package_name(tmp_path, project):
+def test_a_moved_or_cloned_project_keeps_its_name(tmp_path, project):
+    """The package name is chosen once, by init; a teammate's clone in a
+    folder with another name must not rewrite the committed datapackage.json."""
     recorded_project(project)
+    before = (project / "datapackage.json").read_bytes()
     moved = tmp_path / "Renamed Project"
     shutil.move(str(project), moved)
     uvs.sync(root=moved)
-    assert load(moved)["name"] == "renamed-project"
+    uvs.sync(root=moved, all=True)
+    assert load(moved)["name"] == "proj"
+    assert (moved / "datapackage.json").read_bytes() == before
+
+
+def test_an_invalid_recorded_name_is_replaced_from_the_folder(tmp_path, project):
+    recorded_project(project)
+    data = load(project)
+    data["name"] = "Not A Valid Name"
+    (project / "datapackage.json").write_text(json.dumps(data), encoding="utf-8")
+    uvs.sync(root=project, all=True)
+    assert load(project)["name"] == "proj"
 
 
 def test_sync_output_validates_with_frictionless(project):

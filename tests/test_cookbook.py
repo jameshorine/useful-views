@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -82,7 +83,9 @@ def test_a_changed_recipe_makes_the_cookbook_stale(tmp_path):
     uvs.cookbook(root=root)
     toml = root / "recipes" / "gdp_per_capita" / "recipe.toml"
     toml.write_text(toml.read_text(encoding="utf-8").replace("GDP per capita,", "GDP per head,"), encoding="utf-8")
-    uvs.sync(root=root)
+    with pytest.warns(uvs.UsefulViewsWarning, match="cookbook.json no longer matches"):
+        result = uvs.sync(root=root)
+    assert any("useful-views cookbook" in w for w in result.warnings)
     assert [f.kind for f in uvs.check(root=root)] == ["stale-cookbook"]
     assert not uvs.cookbook(root=root, check=True).up_to_date
     assert uvs.cookbook(root=root).written
@@ -93,7 +96,8 @@ def test_a_removed_recipe_makes_the_cookbook_stale(tmp_path):
     root = synced_reference(tmp_path)
     uvs.cookbook(root=root)
     shutil.rmtree(root / "recipes" / "gdp_per_capita")
-    uvs.sync(root=root)
+    with pytest.warns(uvs.UsefulViewsWarning, match="cookbook.json no longer matches"):
+        uvs.sync(root=root)
     assert [f.kind for f in uvs.check(root=root)] == ["stale-cookbook"]
     assert uvs.cookbook(root=root).recipes == ("pwt_panel",)
 
@@ -115,3 +119,98 @@ def test_cookbook_refusal_as_json(project):
     error = json.loads(out.stdout)["error"]
     assert out.returncode == 3 and error["type"] == "CookbookError"
     assert [f["kind"] for f in error["findings"]] == ["never-run"]
+
+
+# --- cookbook --check on a clone without data (CI) -------------------------------
+
+
+def committed_copy(root, dest):
+    """What a fresh clone or CI checkout has: everything but the gitignored
+    raw data, work files and views."""
+    def ignore(folder, names):
+        rel = os.path.relpath(folder, root).replace(os.sep, "/")
+        if rel == "raw":
+            return [n for n in names if n != ".gitkeep"]
+        if rel == "useful-views":
+            return [n for n in names if n.endswith(".parquet")]
+        return ["work"] if rel == "." else []
+
+    shutil.copytree(root, dest, ignore=ignore)
+    return dest
+
+
+def test_check_mode_works_on_a_clone_without_data(tmp_path):
+    root = synced_reference(tmp_path)
+    uvs.cookbook(root=root)
+    clone = committed_copy(root, tmp_path / "ci-checkout")
+    kinds = {f.kind for f in uvs.check(root=clone)}
+    assert kinds == {"missing-input", "missing-view"}  # check itself sees the missing data
+    result = uvs.cookbook(root=clone, check=True)
+    assert result.up_to_date and result.findings == ()
+    out = cli("cookbook", "--check", "--json", cwd=clone)
+    assert out.returncode == 0 and json.loads(out.stdout)["findings"] == []
+
+
+def test_check_mode_on_a_clone_catches_a_recipe_edited_without_sync(tmp_path):
+    root = synced_reference(tmp_path)
+    uvs.cookbook(root=root)
+    clone = committed_copy(root, tmp_path / "ci-checkout")
+    toml = clone / "recipes" / "gdp_per_capita" / "recipe.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace("GDP per capita,", "GDP per head,"), encoding="utf-8")
+    result = uvs.cookbook(root=clone, check=True)
+    assert not result.up_to_date
+    assert [(f.kind, f.recipe, f.reason) for f in result.findings] == [("out-of-date", "gdp_per_capita", "changed")]
+    out = cli("cookbook", "--check", cwd=clone)
+    assert out.returncode == 1 and "out-of-date: recipes/gdp_per_capita" in out.stdout
+    assert "Run useful-views sync, then useful-views cookbook" in out.stdout
+
+
+def test_check_mode_on_a_clone_catches_a_recipe_never_run(tmp_path):
+    root = synced_reference(tmp_path)
+    uvs.cookbook(root=root)
+    clone = committed_copy(root, tmp_path / "ci-checkout")
+    write_recipe(clone, "extra", inputs=["raw/pwt110_bra_deu_esp_usa.csv"], outputs=["useful-views/extra.parquet"])
+    result = uvs.cookbook(root=clone, check=True)
+    assert not result.up_to_date and [f.kind for f in result.findings] == ["never-run"]
+    data = json.loads(cli("cookbook", "--check", "--json", cwd=clone).stdout)
+    assert data["ok"] is False and data["findings"][0]["recipe"] == "extra"
+
+
+def test_a_cookbook_that_is_not_utf8_is_stale_and_rewritten(tmp_path):
+    root = synced_reference(tmp_path)
+    uvs.cookbook(root=root)
+    (root / "cookbook.json").write_bytes((root / "cookbook.json").read_text(encoding="utf-8").encode("utf-16"))
+    (finding,) = uvs.check(root=root)
+    assert finding.kind == "stale-cookbook"
+    assert uvs.cookbook(root=root).written
+    assert uvs.check(root=root) == []
+
+
+def test_a_cookbook_with_crlf_line_endings_is_not_stale(tmp_path):
+    root = synced_reference(tmp_path)
+    uvs.cookbook(root=root)
+    path = root / "cookbook.json"
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))  # git autocrlf on Windows
+    assert uvs.check(root=root) == []
+    assert uvs.cookbook(root=root, check=True).up_to_date
+
+
+def test_a_cookbook_that_is_a_folder_is_explained(tmp_path):
+    root = synced_reference(tmp_path)
+    (root / "cookbook.json").mkdir()
+    (finding,) = uvs.check(root=root)
+    assert finding.kind == "stale-cookbook" and "is a folder" in finding.message
+    with pytest.raises(uvs.ProjectError, match="cookbook.json is a folder"):
+        uvs.cookbook(root=root)
+
+
+def test_the_refusal_points_to_sync_only_when_sync_can_fix_it(project):
+    write_recipe(project, "a", inputs=["raw/missing.csv"], outputs=["useful-views/a.parquet"])
+    with pytest.raises(uvs.CookbookError) as err:
+        uvs.cookbook(root=project)
+    assert [f.kind for f in err.value.findings] == ["missing-input", "never-run"]
+    assert "Fix what is listed" in str(err.value)
+    write(project, "raw/missing.csv", "id,value\n1,2\n")
+    with pytest.raises(uvs.CookbookError) as err:
+        uvs.cookbook(root=project)
+    assert str(err.value).endswith("Run useful-views sync, then try again.")

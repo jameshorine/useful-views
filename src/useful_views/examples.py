@@ -9,18 +9,23 @@ changes under a user and a damaged download is never used.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import os
+import re
+import ssl
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .errors import UsefulViewsError
-from .project import check_not_nested, init
+from .paths import is_ignored
+from .project import check_not_nested, init, too_broad
 
 DATA_REPO = "https://raw.githubusercontent.com/jameshorine/useful-views-data"
 DATA_TAG = "examples-v2"
-# Set this to download from somewhere else: a mirror, or a local copy as a
-# file:// URL laid out like the repository (examples/<name>/...).
+# Set this to download from somewhere else: a mirror, or a local copy (a
+# folder path or file:// URL) laid out like the repository (examples/<name>/...).
 DATA_URL_ENV = "USEFUL_VIEWS_DATA_URL"
 ISSUES = "https://github.com/jameshorine/useful-views/issues"
 
@@ -42,22 +47,113 @@ EXAMPLES = {
 
 
 class ExampleError(UsefulViewsError):
-    """An example could not be downloaded or set up."""
+    """An example could not be downloaded or set up.
+
+    Attributes:
+        kind: What went wrong, for scripts: "unknown-example", "folder-not-empty",
+            "network", "tls" (the secure connection could not be verified),
+            "not-found" or "checksum".
+    """
+
+    def __init__(self, message: str, *, kind: str | None = None):
+        super().__init__(message)
+        self.kind = kind
+
+    def to_dict(self) -> dict:
+        data = super().to_dict()
+        data["kind"] = self.kind
+        return data
 
 
-def _base_url() -> str:
-    return (os.environ.get(DATA_URL_ENV) or f"{DATA_REPO}/{DATA_TAG}").rstrip("/")
+def _mirror() -> str | Path | None:
+    """The source set with USEFUL_VIEWS_DATA_URL: a URL, or a local folder
+    (a path, or a file: URL), which is read directly from disk."""
+    value = os.environ.get(DATA_URL_ENV, "").strip()
+    if not value:
+        return None
+    if re.match(r"^[A-Za-z]:[\\/]", value) or not re.match(r"^[A-Za-z][A-Za-z0-9+.-]+:", value):
+        return Path(value).expanduser().resolve()  # a path: /srv/mirror, C:\mirror, \\server\share
+    if value.lower().startswith("file:"):
+        parts = urlsplit(value)
+        where = f"//{parts.netloc}{parts.path}" if parts.netloc not in ("", "localhost") else parts.path
+        return Path(urllib.request.url2pathname(where)).resolve()
+    if urlsplit(value).username is not None or "@" in urlsplit(value).netloc:
+        raise ExampleError(
+            f"{DATA_URL_ENV} contains a user name or password, which useful-views does not send and does not "
+            "show. Use a mirror that needs no login, or a local copy of the files (a folder path).",
+            kind="network",
+        )
+    return value.rstrip("/")
+
+
+def _source() -> str | Path:
+    return _mirror() or f"{DATA_REPO}/{DATA_TAG}"
+
+
+def _shown(url: str) -> str:
+    """A URL without any user name or password in it, for messages."""
+    return re.sub(r"//[^/@\s]*@", "//", url)
+
+
+def _advice(kind: str) -> str:
+    mirror = _mirror()
+    if mirror and kind in ("not-found", "checksum"):
+        return (
+            f"{DATA_URL_ENV} is set to {_shown(str(mirror))}, so the examples come from there. Check that it holds "
+            f"a copy of the useful-views-data repository at {DATA_TAG} (examples/<name>/...), or unset it to "
+            "download from GitHub."
+        )
+    offline = (
+        f"Without internet access, copy the useful-views-data repository at {DATA_TAG} some other way and set "
+        f"{DATA_URL_ENV} to that folder."
+    )
+    if kind == "tls":
+        return (
+            "The secure connection could not be verified. This happens on networks that inspect encrypted "
+            "traffic, and with a Python that has no certificates installed (on macOS, run 'Install "
+            "Certificates.command' in the Python folder). Ask your IT team for the certificate and set "
+            f"SSL_CERT_FILE to it. {offline}"
+        )
+    if kind == "not-found":
+        return f"The file is not where this version of useful-views expects it. Please report it at {ISSUES}"
+    return (
+        "Check your internet connection and try again. Behind a proxy, set HTTPS_PROXY to its address. "
+        + offline
+    )
 
 
 def _download(url: str) -> bytes:
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             return response.read()
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        reason = getattr(exc, "reason", None) or exc
-        raise ExampleError(
-            f"Could not download {url} ({reason}). Check your internet connection and try again."
-        ) from exc
+    except urllib.error.HTTPError as exc:
+        cause = exc
+        kind, reason = ("not-found" if exc.code == 404 else "network"), f"HTTP {exc.code} {exc.reason}"
+    except urllib.error.URLError as exc:
+        cause = exc
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(reason):
+            kind = "tls"
+        else:
+            kind = "network"
+    except (http.client.HTTPException, OSError, ValueError) as exc:
+        cause = exc
+        kind, reason = "network", f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+    reason = re.sub(r"[^\s'\"/@]+@", "", str(reason))  # never show a password, wherever urllib put it
+    raise ExampleError(f"Could not download {_shown(url)} ({reason}). {_advice(kind)}", kind=kind) from cause
+
+
+def _read(source: str | Path, rel: str) -> tuple[str, bytes]:
+    """Where a file of the example is, for messages, and its bytes."""
+    if isinstance(source, Path):
+        path = source / rel
+        try:
+            return str(path), path.read_bytes()
+        except OSError as exc:
+            kind = "not-found" if isinstance(exc, (FileNotFoundError, IsADirectoryError)) else "network"
+            raise ExampleError(f"Could not read {path} ({exc.strerror or exc}). {_advice(kind)}", kind=kind) from exc
+    url = f"{source}/{rel}"
+    return url, _download(url)
 
 
 def example(name: str, path: str | Path | None = None) -> Path:
@@ -78,28 +174,43 @@ def example(name: str, path: str | Path | None = None) -> Path:
         The project folder, as an absolute path.
 
     Raises:
-        ExampleError: The name is unknown, the folder is not empty, a file
-            could not be downloaded, or a checksum did not match. Nothing is
-            written in those cases.
+        ExampleError: The name is unknown, the folder is not empty (or is
+            your home folder or the top of a drive), a file could not be
+            downloaded, or a checksum did not match. Nothing is written in
+            those cases.
         ProjectError: The folder is inside another project.
     """
     if name not in EXAMPLES:
         listing = "; ".join(f"{n}: {e['description']}" for n, e in EXAMPLES.items())
-        raise ExampleError(f"There is no example named {name!r}. Available examples: {listing}")
+        raise ExampleError(f"There is no example named {name!r}. Available examples: {listing}",
+                           kind="unknown-example")
     folder = Path(path if path is not None else f"{name}-example").expanduser().resolve()
-    if folder.exists() and (not folder.is_dir() or any(folder.iterdir())):
-        raise ExampleError(f"{folder} already exists and is not an empty folder. Choose another path.")
+    # Hidden files (.DS_Store, Thumbs.db) do not count: the folder looks empty.
+    if folder.exists() and (not folder.is_dir() or any(not is_ignored(n) for n in os.listdir(folder))):
+        raise ExampleError(f"{folder} already exists and is not an empty folder. Choose another path.",
+                           kind="folder-not-empty")
+    why = too_broad(folder)
+    if why:
+        raise ExampleError(f"{folder} {why}; make the example in a folder of its own, such as: useful-views example "
+                           f"{name} (it creates {name}-example/).", kind="folder-not-empty")
     check_not_nested(folder)
 
-    base = f"{_base_url()}/examples/{name}"
+    source = _source()
     files: dict[str, bytes] = {}
     for rel, expected in EXAMPLES[name]["files"].items():
-        url = f"{base}/{rel}"
-        data = _download(url)
+        url, data = _read(source, f"examples/{name}/{rel}")
         if hashlib.sha256(data).hexdigest() != expected:
+            if _mirror():
+                why = (
+                    f"{DATA_URL_ENV} points to a copy that is not the {DATA_TAG} version, or whose files were "
+                    "changed (git on Windows can change line endings: check it out with core.autocrlf=false)."
+                )
+            else:
+                why = f"Please report it at {ISSUES}"
             raise ExampleError(
-                f"{url} is not the file this version of useful-views expects (its checksum differs), "
-                f"so nothing was written. Please report it at {ISSUES}"
+                f"{_shown(url)} is not the file this version of useful-views expects (its checksum differs), "
+                f"so nothing was written. {why}",
+                kind="checksum",
             )
         files[rel] = data
 

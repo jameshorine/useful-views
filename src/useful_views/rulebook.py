@@ -23,8 +23,16 @@ class Rule(NamedTuple):
     detail: str
 
 
-RULES: dict[int, Rule] = {
-    rule.number: rule
+class _Rules(dict):
+    """The numbered rules a recipe must follow: RULES[7] is rule 7, a Rule.
+
+    `RecipeRefused.rule` is a key of this dict, `useful-views rules` prints the
+    rules, and `describe_rules()` gives them as text.
+    """
+
+
+RULES: dict[int, Rule] = _Rules(
+    (rule.number, rule)
     for rule in (
         Rule(
             1,
@@ -48,8 +56,8 @@ RULES: dict[int, Rule] = {
             4,
             "Inputs exist and are allowed",
             "Each input is a file under raw/ or directly inside useful-views/, written relative to the project "
-            "root with forward slashes, and exists with exactly that letter case. A raw input is not empty and "
-            "can be read.",
+            "root with forward slashes and no wildcards, with names that can exist on Windows, and exists with "
+            "exactly that letter case. A raw input is not empty and can be read.",
         ),
         Rule(
             5,
@@ -65,17 +73,20 @@ RULES: dict[int, Rule] = {
         Rule(
             7,
             "Outputs are allowed and unique",
-            "Each output is a .parquet file directly inside useful-views/, is not useful-views/README.md, and "
-            "is not made by another recipe.",
+            "Each output is a .parquet file directly inside useful-views/, with a name that can exist on "
+            "Windows, is not useful-views/README.md, and is not made by another recipe.",
         ),
         Rule(
             8,
             "Resource names are unique",
-            "No two recorded files share a resource name: the file name without its extension, lowercased, "
-            "with characters other than a-z, 0-9, '.', '_' and '-' turned into '-'.",
+            "No two recorded files share a resource name: a view's file name, or a raw file's path below raw/, "
+            "without the extension, lowercased, with '/' and other characters outside a-z, 0-9, '.', '_' and '-' "
+            "turned into '-' (accented letters lose their accents; letters of other scripts become their "
+            "Unicode code point).",
         ),
     )
-}
+)
+"""The numbered rules a recipe must follow: RULES[7] is rule 7, a Rule."""
 
 
 def describe_rules() -> str:

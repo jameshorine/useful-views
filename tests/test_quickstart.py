@@ -1,4 +1,4 @@
-"""docs/quickstart.md exists and its commands work as written.
+"""user_guide/quickstart.md exists and its commands work as written.
 
 The setup blocks (installing the package) are skipped: the test runs in this
 environment, with its scripts on PATH. `example` downloads from tests/data
@@ -23,7 +23,7 @@ import useful_views as uvs
 
 from conftest import REFERENCE
 
-QUICKSTART = Path(__file__).resolve().parent.parent / "docs" / "quickstart.md"
+QUICKSTART = Path(__file__).resolve().parent.parent / "user_guide" / "quickstart.md"
 
 
 def blocks(language: str) -> list[str]:
@@ -70,3 +70,13 @@ def test_quickstart_shell(tmp_path):
     assert (root / "useful-views" / "README.md").read_bytes() == (
         REFERENCE / "useful-views" / "README.md"
     ).read_bytes()
+
+
+def test_the_refusal_shown_is_the_real_message(tmp_path):
+    text = QUICKSTART.read_text(encoding="utf-8")
+    shown = re.search(r"<!-- quickstart-output: refusal -->\n```text\n(.*?)```", text, re.S).group(1)
+    root = uvs.init(tmp_path / "pwt-notebook")
+    uvs.new_recipe("growth_since_2000", root=root)
+    with pytest.raises(uvs.RecipeRefused) as err:
+        uvs.run("growth_since_2000", root=root)
+    assert shown.rstrip("\n") == str(err.value)
