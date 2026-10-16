@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/useful-views-logo-dark.svg">
-  <img src="docs/useful-views-logo.svg" alt="useful-views" width="480">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jameshorine/useful-views/main/docs/useful-views-logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/jameshorine/useful-views/main/docs/useful-views-logo.svg" alt="useful-views" width="480">
 </picture>
 
 *Documented derived tables for data projects.*
