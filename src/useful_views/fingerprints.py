@@ -137,8 +137,9 @@ def data_hash(path: str | os.PathLike) -> str:
     try:
         for group in range(parquet.num_row_groups):
             if len(set(names)) == len(names):
-                # One column at a time, so only one column chunk is in memory.
-                columns = [parquet.read_row_group(group, columns=[n]).column(0) for n in names]
+                # Each column is read only when its turn comes, so only one
+                # column chunk is in memory at a time.
+                columns = (parquet.read_row_group(group, columns=[n]).column(0) for n in names)
             else:
                 # Duplicate names cannot be read by name.
                 columns = parquet.read_row_group(group).columns

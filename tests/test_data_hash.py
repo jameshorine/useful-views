@@ -14,6 +14,7 @@ import decimal
 import hashlib
 import math
 import struct
+import sys
 from pathlib import Path
 
 import pyarrow as pa
@@ -332,8 +333,28 @@ def test_every_column_counts_including_a_pandas_index(tmp_path):
     assert uvs.data_hash(tmp_path / "default.parquet") == uvs.data_hash(tmp_path / "without.parquet")
 
 
-def test_duplicate_column_names(tmp_path):
-    table = pa.Table.from_arrays([pa.array([1, 2]), pa.array(["a", "b"]), pa.array([3, None])], names=["x", "y", "x"])
+def test_one_column_in_memory_at_a_time(tmp_path, monkeypatch):
+    """Each column chunk is hashed before the next is read."""
+    from useful_views import fingerprints
+
+    path = tmp_path / "t.parquet"
+    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [0.5, 1.5, 2.5]}), path, row_group_size=2)
+    events = []
+    read, encode = pq.ParquetFile.read_row_group, fingerprints._encode
+    monkeypatch.setattr(pq.ParquetFile, "read_row_group",
+                        lambda self, *a, **k: events.append("read") or read(self, *a, **k))
+    monkeypatch.setattr(fingerprints, "_encode", lambda *a: events.append("hash") or encode(*a))
+    uvs.data_hash(path)
+    assert events == ["read", "hash"] * 6  # 3 columns in each of 2 row groups
+
+
+@pytest.mark.parametrize("table", [
+    pa.Table.from_arrays([pa.array([1, 2]), pa.array(["a", "b"]), pa.array([3, None])], names=["x", "y", "x"]),
+    pa.table({"a": [1, 2], "a.b": ["x", None], "a.b.c": [0.5, 1.5]}),  # read by name, a dot is not a path
+    pa.table({"": [1, 2], " ": [3, 4], "é/ü": [5, 6]}),
+    pa.table({}),
+], ids=["duplicates", "dots", "odd", "no-columns"])
+def test_unusual_column_names(tmp_path, table):
     path = tmp_path / "t.parquet"
     pq.write_table(table, path, row_group_size=1)
     assert uvs.data_hash(path) == reference_hash(path)
@@ -378,3 +399,31 @@ def test_a_chunk_that_starts_partway_encodes_the_same(name):
     sliced = column.slice(1, 2)
     fresh = pa.concat_arrays([pa.array([], column.type), sliced])  # copied, so it starts at 0
     assert bytes(_encode(sliced, kind_name)) == bytes(_encode(fresh, kind_name))
+
+
+def test_benchmark_script_still_works(tmp_path):
+    """scripts/benchmark_data_hash.py draws the speed figure in the docs. It
+    is run by hand; this only checks that it still works, at a tiny size."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("benchmark", ROOT / "scripts" / "benchmark_data_hash.py")
+    benchmark = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(benchmark)
+    saved = []
+    results = benchmark.run(rows=[100], columns=[1, 5], type_size=(100, 1), repeats=1, chunk_rows=30,
+                            show=lambda line: None, save=lambda r: saved.append(len(r["sizes"]) + len(r["types"])))
+    assert [(r["rows"], r["columns"]) for r in results["sizes"]] == [(100, 1), (100, 5)]
+    assert [r["type"] for r in results["types"]] == benchmark.TYPES
+    assert saved == [1, 2, 3, 4, 5, 6]
+    for r in results["sizes"] + results["types"]:
+        assert r["hash_seconds"] > 0 and r["read_seconds"] > 0 and r["hash_runs"] == 1
+        assert r["hash_peak_mb"] is None if sys.platform == "win32" else r["hash_peak_mb"] > 0
+    assert results["computer"]["pyarrow"] == pa.__version__
+    # Written in pieces: 100 rows, 30 at a time, is 4 row groups.
+    path = tmp_path / "pieces.parquet"
+    benchmark.write_view(path, 100, benchmark.mixed(4), 30)
+    assert pq.ParquetFile(path).num_row_groups == 4
+    assert pq.read_table(path).num_rows == 100
+    pytest.importorskip("matplotlib")
+    benchmark.plot(results, tmp_path / "speed.svg")
+    assert "Time to hash a view" in (tmp_path / "speed.svg").read_text(encoding="utf-8")
