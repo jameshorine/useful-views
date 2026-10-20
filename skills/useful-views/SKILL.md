@@ -45,6 +45,13 @@ inputs  = ["raw/my_data.csv"]                   # files under raw/, or other rec
 outputs = ["useful-views/my-view.parquet"]      # .parquet files directly in useful-views/
 ```
 
+In `datapackage.json`, each view's entry has its `fingerprint` (a data hash
+of its contents, `datahash1:sha256:…`, or `null`) and, in
+`producedBy.inputFingerprints`, the fingerprints the views its recipe read had
+when it ran. Where one differs from that view's own `fingerprint` now, the
+view was made from an older version of it; `useful-views sync --all` makes
+everything again.
+
 Each step `NN_name.py` starts with a `#` comment saying what it does, runs
 from the project root, reads and writes files by the same path strings as in
 `recipe.toml`, and passes data to later steps only through `work/<name>/`.

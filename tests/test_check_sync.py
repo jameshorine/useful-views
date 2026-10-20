@@ -565,7 +565,7 @@ def test_sync_runs_never_run_recipes_upstream_first(driver, project):
     out = driver.sync()
     assert out.ok, out.message
     assert ran(driver, out) == ["up", "down"]
-    assert record_names(project) == ["down", "up"]
+    assert record_names(project) == ["up", "down"]  # recorded in run order too
     assert_clean(driver, project)
 
 
@@ -812,7 +812,7 @@ def test_rename_recipe_folder_then_sync(driver, project):
     assert out.ok, out.message
     assert ran(driver, out) == ["panel", "gdp_per_capita"]
     data = load(project)
-    assert [r["name"] for r in data["recipes"]] == ["gdp_per_capita", "panel"]
+    assert [r["name"] for r in data["recipes"]] == ["panel", "gdp_per_capita"]  # in run order
     view = next(r for r in data["resources"] if r["path"] == "useful-views/pwt-panel.parquet")
     assert view["producedBy"]["recipe"] == "panel"
     assert_clean(driver, project)

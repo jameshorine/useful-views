@@ -3,6 +3,8 @@
 datapackage.json is the record store: its `recipes` list holds one record
 per recorded recipe, and its `resources` list describes the raw files those
 recipes read and the views they made ("Generated files" in the README).
+Each view's entry also holds its fingerprint (its data hash) and, in
+`producedBy`, the fingerprints of the views its recipe read.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 
 from .errors import ProjectError
+from .fingerprints import DataHashError, data_hash
 from .paths import CATALOG, DATAPACKAGE, VIEWS, resource_name, slug
 
 BOM = b"\xef\xbb\xbf"
@@ -191,10 +194,58 @@ def describe_raw(root: Path, rel: str) -> dict:
     return describe_file(rel)
 
 
-def describe_view(root: Path, rel: str, recipe: str, inputs: list[str]) -> dict:
-    resource = describe_parquet(root, rel)
-    resource["producedBy"] = {"recipe": recipe, "inputs": list(inputs)}
-    return resource
+def describe_view(root: Path, rel: str, recipe: str, inputs: list[str], fingerprint: str | None,
+                  input_fingerprints: dict[str, str | None]) -> dict:
+    described = describe_parquet(root, rel)
+    described["fingerprint"] = fingerprint
+    described["producedBy"] = {
+        "recipe": recipe,
+        "inputs": list(inputs),
+        "inputFingerprints": dict(input_fingerprints),
+    }
+    return view_layout(described)
+
+
+# The fields that say what a view is and where it came from come first, so a
+# reader sees them together; its schema, often long, comes last.
+VIEW_FIRST = ("name", "path", "fingerprint", "producedBy")
+
+
+def view_layout(resource: dict) -> dict:
+    first = {k: resource[k] for k in VIEW_FIRST if k in resource}
+    return {**first, **{k: v for k, v in resource.items() if k not in first}}
+
+
+# --- fingerprints -------------------------------------------------------------
+
+# The shape of a recorded fingerprint: the rules' name and version, the
+# algorithm, and the digest (see user_guide/reference/data-hash.md).
+FINGERPRINT = re.compile(r"^datahash[1-9][0-9]*:[a-z0-9]+:[0-9a-f]+$")
+
+
+def fingerprint_of(path: Path) -> str | None:
+    """A view's fingerprint: its data hash, or None when the rules do not
+    cover one of its columns (a list or struct in a cell). Raises
+    DataHashError when the file cannot be read."""
+    try:
+        return data_hash(path)
+    except DataHashError as error:
+        if error.column is None:
+            raise
+        return None
+
+
+def known_fingerprint(root: Path, rel: str, known: dict) -> str | None:
+    """fingerprint_of, hashing each version of a file once. `known` holds what
+    was hashed before, by path, with the file's size, modification time and
+    file id then; a file that still has all three is not hashed again."""
+    st = os.stat(root / rel)
+    stamp = (st.st_size, st.st_mtime_ns, st.st_ino)
+    if rel in known and known[rel][0] == stamp:
+        return known[rel][1]
+    value = fingerprint_of(root / rel)
+    known[rel] = (stamp, value)
+    return value
 
 
 # --- datapackage.json -------------------------------------------------------
@@ -254,7 +305,28 @@ def load_datapackage(root: Path) -> dict:
                 f"{path} records a {what} that useful-views never writes (it was edited by hand, or left by a "
                 f"merge), so nothing is changed. {restore}"
             )
+    for resource in data["resources"]:
+        if not _fingerprints_ok(resource):
+            raise ProjectError(
+                f"{path} records a fingerprint for {resource['path']} that useful-views never writes (it was "
+                f"edited by hand, or left by a merge), so nothing is changed. {restore}"
+            )
     return data
+
+
+def _fingerprints_ok(resource: dict) -> bool:
+    """A view's fingerprints, when recorded, have the shape useful-views
+    writes. Records from before fingerprints have none, which is fine."""
+    def ok(value: object) -> bool:
+        return value is None or (isinstance(value, str) and FINGERPRINT.match(value) is not None)
+
+    produced = resource.get("producedBy")
+    if produced is None:
+        return "fingerprint" not in resource
+    if not isinstance(produced, dict) or not ok(resource.get("fingerprint")):
+        return False
+    inputs = produced.get("inputFingerprints", {})
+    return isinstance(inputs, dict) and all(isinstance(k, str) and ok(v) for k, v in inputs.items())
 
 
 def raw_inputs(record: dict) -> list[str]:
@@ -280,21 +352,46 @@ def assemble(
     """Build datapackage.json from records and resource descriptions.
 
     `views` and `raws` map paths to resources. Only raw files read by a record
-    are kept; views are listed under their recipe, recipes in name order.
+    are kept. Recipes are listed in run order (see `run_order`), and views
+    under their recipe, so the file reads in the order the data is made.
     `name` is the package name already recorded: it is kept, so a clone in a
     folder with another name writes the same file. Only when there is none
     (or it is not a valid name) does the folder's name give one.
     """
     if not (isinstance(name, str) and PACKAGE_NAME.fullmatch(name)):
         name = slug(root.name)
-    records = sorted(records, key=lambda r: r["name"])
+    by_name = {r["name"]: r for r in records}
+    records = [by_name[n] for n in run_order(by_name)]
     used_raw = sorted({p for r in records for p in raw_inputs(r)})
     resources = [raws[p] for p in used_raw if p in raws]
     for record in records:
         for path in sorted(record["outputs"]):
             if path in views:
-                resources.append(views[path])
+                resources.append(view_layout(views[path]))
     return {"name": name, "resources": resources, "recipes": records}
+
+
+def run_order(records: dict[str, dict]) -> list[str]:
+    """Recipe names, upstream first; recipes that do not depend on each other
+    in name order."""
+    makers = {out: name for name, r in records.items() for out in r["outputs"]}
+    upstream = {
+        name: sorted({makers[i] for i in r["inputs"] if i in makers} - {name}) for name, r in records.items()
+    }
+    order: list[str] = []
+    done: set[str] = set()
+
+    def visit(name: str, seen: tuple[str, ...] = ()) -> None:
+        if name in done or name in seen:
+            return
+        for up in upstream[name]:
+            visit(up, (*seen, name))
+        done.add(name)
+        order.append(name)
+
+    for name in sorted(records):
+        visit(name)
+    return order
 
 
 def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -305,8 +402,35 @@ def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     return views, raws
 
 
+WIDTH = 100
+
+
 def render_datapackage(data: dict) -> str:
-    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    """datapackage.json, laid out to be read: the package, its two lists and
+    each of their entries one item per line; inside an entry, anything that
+    fits on a line (a column, a list of paths) on one line."""
+    return _layout(data, 0, 0, 0) + "\n"
+
+
+def _layout(value: object, indent: int, depth: int, lead: int, fits: bool | None = None) -> str:
+    """`value` as JSON for a line that starts `indent` spaces and `lead`
+    characters (its key) in. Items of one list are all on one line each, or
+    all spread out, so they line up."""
+    flat = json.dumps(value, ensure_ascii=False)
+    if fits is None:
+        fits = indent + lead + len(flat) <= WIDTH
+    if not isinstance(value, (dict, list)) or not value or (depth > 2 and fits):
+        return flat
+    pad = " " * (indent + 2)
+    if isinstance(value, dict):
+        items = []
+        for key, item in value.items():
+            name = json.dumps(key, ensure_ascii=False) + ": "
+            items.append(pad + name + _layout(item, indent + 2, depth + 1, len(name)))
+        return "{\n" + ",\n".join(items) + "\n" + " " * indent + "}"
+    together = all(indent + 2 + len(json.dumps(item, ensure_ascii=False)) <= WIDTH for item in value)
+    items = [pad + _layout(item, indent + 2, depth + 1, 0, together) for item in value]
+    return "[\n" + ",\n".join(items) + "\n" + " " * indent + "]"
 
 
 # --- useful-views/README.md -------------------------------------------------

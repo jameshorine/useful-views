@@ -14,8 +14,20 @@ All notable changes to useful-views are recorded here. Versions follow
   stays level however large the view (about 250 MB for files written in
   million-row row groups), and hashes about 22 million values a second on an
   Apple M2 laptop. A file with a nested column has no data hash in
-  version 1; `DataHashError` names the column. useful-views does not record
-  data hashes yet.
+  version 1; `DataHashError` names the column.
+- When a recipe runs, `datapackage.json` records each view's fingerprint
+  (its data hash, or `null` when a column is not covered) and, in
+  `producedBy.inputFingerprints`, the fingerprints of the views the recipe
+  read, taken just before its steps ran. Records written by 0.1 stay valid;
+  each view gets its fingerprint the next time its recipe runs
+  (`useful-views sync --all` runs them all). `check` and `sync` do not act
+  on fingerprints yet.
+- `datapackage.json` is laid out to be read: recipes, and the views under
+  them, in the order they run; each view's name, path, fingerprint and
+  `producedBy` first and its columns last; short items on one line. Its
+  content is unchanged, but the first `sync` or `run` after upgrading
+  rewrites it, and the catalog, in the new order. The catalog lists views in
+  run order too.
 - New pages: "Stale views and fingerprints" (concepts), "Try it: two
   fingerprints" (guides) and "Data hash rules" (reference), with a figure of
   hashing time and memory by the size of the view.

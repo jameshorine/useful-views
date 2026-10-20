@@ -2,9 +2,10 @@
 title: "Try it: two fingerprints"
 ---
 
-[Stale views and fingerprints](../concepts/stale-views.md) explains why
-useful-views is planned to record two fingerprints for each view: a **file
-hash** and a **data hash**. This guide computes both by hand, in a few lines
+[Stale views and fingerprints](../concepts/stale-views.md) explains the two
+fingerprints a view can have: a **file hash** and a **data hash**.
+useful-views records the data hash of every view it makes; the file hash
+is planned. This guide computes both by hand, in a few lines
 of Python, so you can see for yourself what each one notices and why one
 alone is not enough. At the end, you check the result against useful-views'
 own data hash.

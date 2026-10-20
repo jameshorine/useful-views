@@ -19,11 +19,14 @@ from pathlib import Path
 import pyarrow as pa
 
 from .errors import OutputError, ProjectError, RecipeRefused, StepFailed, warn
+from .fingerprints import DataHashError
 from .lock import project_lock
 from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
-from .record import assemble, describe_view, load_datapackage, retry, split_resources, write_generated
+from .record import (
+    assemble, describe_view, known_fingerprint, load_datapackage, retry, split_resources, write_generated,
+)
 from .rules import check_all
 
 STDERR_TAIL = 50  # lines of a failed step's error output shown in the message
@@ -378,8 +381,9 @@ def _actual_name(project: Path, rel: str) -> str | None:
     return None
 
 
-def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
-    """Each output must be a non-empty, readable parquet file."""
+def _check_outputs(project: Path, name: str, loaded, inputs: dict[str, str | None], known: dict) -> dict[str, dict]:
+    """Each output must be a non-empty, readable parquet file. Each is described,
+    with its fingerprint and `inputs`, the fingerprints of the views it was made from."""
     bad: list[tuple[str, str]] = []
     for rel in loaded.outputs:
         path = project / rel
@@ -401,8 +405,9 @@ def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
     if not bad:
         for rel in loaded.outputs:
             try:
-                views[rel] = describe_view(project, rel, name, list(loaded.inputs))
-            except (pa.ArrowException, OSError) as exc:
+                fingerprint = known_fingerprint(project, rel, known)
+                views[rel] = describe_view(project, rel, name, list(loaded.inputs), fingerprint, inputs)
+            except (pa.ArrowException, OSError, DataHashError) as exc:
                 bad.append((rel, f"is not a readable parquet file ({exc})"))
     if bad:
         raise OutputError(
@@ -415,6 +420,20 @@ def _check_outputs(project: Path, name: str, loaded) -> dict[str, dict]:
             recipe=name,
         )
     return views
+
+
+def _input_fingerprints(project: Path, loaded, known: dict) -> dict[str, str | None]:
+    """The fingerprint of each view the recipe reads, in the order its
+    recipe.toml lists them; None for one that cannot be hashed (a step
+    reading a file that cannot be read says so itself)."""
+    found: dict[str, str | None] = {}
+    for rel in loaded.inputs:
+        if rel.startswith(f"{VIEWS}/"):
+            try:
+                found[rel] = known_fingerprint(project, rel, known)
+            except (DataHashError, OSError):
+                found[rel] = None
+    return found
 
 
 def _watched(project: Path, loaded, others, data: dict) -> dict[str, tuple[int, int] | None]:
@@ -500,10 +519,13 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
         return _run(project, recipe)
 
 
-def _run(project: Path, recipe: str, *, in_sync: bool = False) -> RunResult:
+def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | None = None) -> RunResult:
     """run() without finding the project or taking its lock. Inside a sync,
     messages leave the next command to sync, and recipes downstream are not
-    warned about: sync runs them next."""
+    warned about: sync runs them next. `known` holds the fingerprints already
+    taken (see record.known_fingerprint); a sync shares it between recipes.
+    """
+    known = {} if known is None else known
     collected: list[str] = []
 
     # Before anything on disk changes: rules 1 to 8.
@@ -517,6 +539,9 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False) -> RunResult:
     except RecipeRefused as exc:
         exc.recipe = exc.recipe or name
         raise
+
+    # The fingerprints of the views this recipe reads, as they are now.
+    inputs = _input_fingerprints(project, loaded, known)
 
     # 1. Clear the old views and work files: a leftover can never pass for a fresh result.
     _remove_outputs(project, loaded.outputs, again)
@@ -535,7 +560,7 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False) -> RunResult:
             _changed(project, before, loaded, others, data, collected)
 
         # 3. Every declared view must have been written.
-        views = _check_outputs(project, name, loaded)
+        views = _check_outputs(project, name, loaded, inputs, known)
 
         # 4. Record the run; only this recipe's files were described again.
         old_views, old_raws = split_resources(data)

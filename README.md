@@ -443,8 +443,9 @@ records what each recipe made from what. `frictionless validate
 datapackage.json` passes on it whenever every recorded file is present.
 
 - `resources` lists every raw file a recorded recipe read, then every view,
-  each with its columns and their types. A view also has `producedBy`: the
-  recipe that made it and that recipe's inputs.
+  each with its columns and their types. A view also has its `fingerprint`,
+  a hash of its contents, and `producedBy`: the recipe that made it, that
+  recipe's inputs, and the fingerprints those inputs had when it ran.
 - `recipes` lists each recorded recipe with its description, inputs, outputs
   and steps, as they were at its last successful run.
 - Column types come from the files themselves: a parquet file's own types,
@@ -454,6 +455,11 @@ datapackage.json` passes on it whenever every recorded file is present.
   (`.dta`, `.xlsx`, ...), and CSVs that are not plain comma-separated UTF-8,
   are recorded without columns.
 - Never edit it by hand. If it is damaged, restore it from git.
+
+Recipes, and their views, are listed in the order they run, so the file reads
+in the order the data is made. See
+[Records](https://jameshorine.github.io/useful-views/user-guide/concepts/records.html)
+for the details.
 
 **`useful-views/README.md`** is a catalog generated from `datapackage.json`:
 for each view, the recipe's description, its inputs, its numbered steps, and
@@ -520,12 +526,11 @@ rules they can check against.
 
 ## Open Questions (Planned Enhancements)
 
-- How should we handle hashing?. Version 1 of `cookbook.json` records every recipe and its steps.
-  Later versions will add the SHA-256 of every raw input, recipe file, step
-  and view, and the environment the steps ran in, locking them the way
-  `uv.lock` locks a Python environment. Then useful-views can report a view
-  as stale, and `sync` can notice a change inside a step's code, a replaced
-  raw file, or views left from before a `git pull`.
+- Fingerprints. useful-views records a fingerprint of every view (its data
+  hash) and of the views each recipe read. Next, `check` and `sync` will
+  compare them to find stale views. Later: fingerprints of raw files, recipe
+  files and steps, and the environment the steps ran in, locking them the way
+  `uv.lock` locks a Python environment.
 - We defined a step to have a "floor" size: any one-change in a data frame means we took a step. Should there be an upper limit on the size of a step? i.e. if we chain togther, say, 100 different operations, should that count as a step? Should there be an upper limit on how much a step does? 
 - How can we document and record where a raw file came from and how to fetch it again? Is it just a document of instrutions? 
 - More view formats alongside parquet, such as CSV and Arrow.
