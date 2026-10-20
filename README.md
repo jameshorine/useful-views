@@ -494,16 +494,16 @@ run `useful-views cookbook`, `cookbook.json`; never edit those by hand.
 `init` writes `.gitignore` and `AGENTS.md` once, if they are not there; after
 that they are yours. So no file has two authors at the same time.
 
-## Planned, TODO, Not yet
+## Open Questions (Planned Enhancements)
 
-- Hashing. Version 1 of `cookbook.json` records every recipe and its steps.
+- How should we handle hashing?. Version 1 of `cookbook.json` records every recipe and its steps.
   Later versions will add the SHA-256 of every raw input, recipe file, step
   and view, and the environment the steps ran in, locking them the way
   `uv.lock` locks a Python environment. Then useful-views can report a view
   as stale, and `sync` can notice a change inside a step's code, a replaced
   raw file, or views left from before a `git pull`.
-- Whether a step should have an upper limit on how much it does.
-- Recording where a raw file came from and how to fetch it again.
+- We defined a step to have a "floor" size: any one-change in a data frame means we took a step. Should there be an upper limit on the size of a step? i.e. if we chain togther, say, 100 different operations, should that count as a step? Should there be an upper limit on how much a step does? 
+- How can we document and record where a raw file came from and how to fetch it again? Is it just a document of instrutions? 
 - More view formats alongside parquet, such as CSV and Arrow.
 - Raw inputs that are folders or sets of files, such as partitioned parquet
   datasets and shapefiles.

@@ -177,4 +177,5 @@ record checksums, so it cannot tell that a raw file, a step's code or a view
 changed since. Later versions are planned to add the SHA-256 of every raw
 input, recipe file, step and view, and then the environment the steps ran
 in, so that `cookbook --check` can tell when anything changed, the way
-`uv.lock` locks a Python environment.
+`uv.lock` locks a Python environment. See
+[Stale views and fingerprints](stale-views.md).

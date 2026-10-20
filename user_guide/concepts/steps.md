@@ -2,7 +2,7 @@
 title: "Steps"
 ---
 
-A **step** is one Python file in a recipe folder, and the smallest unit of
+A **step** is one Python (eventually other languages! R users please reach out!) file in a recipe folder, and the smallest unit of
 work in a project. A step does at least one real transformation of the
 data. There is no maximum: it may do many, and you decide where one step
 ends and the next begins. A [recipe](recipes.md) runs its steps in order.

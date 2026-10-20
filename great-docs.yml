@@ -49,9 +49,11 @@ user_guide:
       - concepts/running.md
       - concepts/records.md
       - concepts/cookbook.md
+      - concepts/stale-views.md
   - section: Guides
     contents:
       - guides/ai-tools.md
+      - guides/fingerprints.md
   - section: Reference
     contents:
       - reference/cli.md

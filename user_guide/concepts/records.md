@@ -78,5 +78,6 @@ with its steps. See [Cookbook](cookbook.md).
 
 The record says which recipe made each view, from which inputs, with which
 steps. It does not yet record checksums of the files, so it cannot tell that
-a raw file, a step's code or a view changed after the run. That is planned
-for a future release.
+a raw file, a step's code or a view changed after the run. See
+[Stale views and fingerprints](stale-views.md) for what that means, what to
+do today, and what is planned.

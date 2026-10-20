@@ -78,7 +78,8 @@ under the same name, since that needs hashing, which is planned for a
 future release. After such a change, use `useful-views sync --all` (or
 `run` that recipe and then each recipe downstream of it). The same goes
 after a `git pull`, merge or branch switch: the views are not in git, so
-they still come from the recipes as they were before.
+they still come from the recipes as they were before. See
+[Stale views and fingerprints](stale-views.md).
 
 ## One command at a time
 
