@@ -31,6 +31,9 @@ Issues = "https://github.com/jameshorine/useful-views/issues"
 useful-views = "useful_views.cli:main"
 
 [dependency-groups]
+bench = [
+    "matplotlib>=3.8",
+]
 dev = [
     "pytest>=8",
     "pytest-xdist>=3",

@@ -494,16 +494,40 @@ run `useful-views cookbook`, `cookbook.json`; never edit those by hand.
 `init` writes `.gitignore` and `AGENTS.md` once, if they are not there; after
 that they are yours. So no file has two authors at the same time.
 
-## Planned, TODO, Not yet
+## How `useful-views` compares
 
-- Hashing. Version 1 of `cookbook.json` records every recipe and its steps.
+`useful-views` is a fixed project structure, not a general workflow engine. Every
+derived table lives in `useful-views/` and records the recipe, inputs and steps
+that made it. Recipes are plain folders of numbered Python files, so you can
+understand a project by reading it: no rule language, no pipeline definition
+file, no configuration layer. The same structure makes a project easy for AI
+coding tools to work in. They get an `AGENTS.md`, `--json` output and numbered
+rules they can check against.
+
+- **Snakemake** is a full workflow engine with its own rule language, wildcards
+  and cluster and cloud execution. Choose it for large or highly parallel
+  pipelines. Choose useful-views when you want a small, readable project where
+  provenance comes from the layout itself.
+- **Kedro** is a framework for production data pipelines, with a data catalog,
+  configuration environments and a project template built for teams.
+  useful-views is a lighter fit for one researcher or a small lab.
+- **DVC** versions data and pipelines alongside Git and syncs them to remote
+  storage. useful-views doesn’t version or store data. It records how each
+  derived table was made, and can sit alongside DVC or Git LFS.
+- **Frictionless Data Packages** are a standard for describing datasets, not a
+  tool for producing them. useful-views writes a standard `datapackage.json`,
+  so its outputs work with Frictionless tools.
+
+## Open Questions (Planned Enhancements)
+
+- How should we handle hashing?. Version 1 of `cookbook.json` records every recipe and its steps.
   Later versions will add the SHA-256 of every raw input, recipe file, step
   and view, and the environment the steps ran in, locking them the way
   `uv.lock` locks a Python environment. Then useful-views can report a view
   as stale, and `sync` can notice a change inside a step's code, a replaced
   raw file, or views left from before a `git pull`.
-- Whether a step should have an upper limit on how much it does.
-- Recording where a raw file came from and how to fetch it again.
+- We defined a step to have a "floor" size: any one-change in a data frame means we took a step. Should there be an upper limit on the size of a step? i.e. if we chain togther, say, 100 different operations, should that count as a step? Should there be an upper limit on how much a step does? 
+- How can we document and record where a raw file came from and how to fetch it again? Is it just a document of instrutions? 
 - More view formats alongside parquet, such as CSV and Arrow.
 - Raw inputs that are folders or sets of files, such as partitioned parquet
   datasets and shapefiles.

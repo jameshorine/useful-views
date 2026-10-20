@@ -100,7 +100,9 @@ from the project root, reads and writes files by the same path strings as in
 ## Python API
 
 `import useful_views as uvs`: `init`, `example`, `new_recipe`, `run`, `sync`,
-`check`, `cookbook`, `root`, `RULES`. Results: `RunResult`, `SyncResult`,
+`check`, `cookbook`, `root`, `RULES`, and `data_hash(path)`, a fingerprint
+of a parquet file's contents that is the same whichever library wrote it.
+Results: `RunResult`, `SyncResult`,
 `Finding`, `CookbookResult`. Errors derive from `UsefulViewsError` and carry
 their facts as attributes and `to_dict()`.
 

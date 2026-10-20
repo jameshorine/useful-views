@@ -4,6 +4,27 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
+## Unreleased
+
+- `data_hash(path)` computes a parquet file's data hash: a fingerprint of
+  the table it holds, the same whichever library or version wrote the file.
+  The rules are fixed and versioned (`datahash1`), on the new "Data hash
+  rules" page, and pinned by test files written by pyarrow, polars and
+  pandas. It reads one column of one row group at a time, so its memory
+  stays level however large the view (about 250 MB for files written in
+  million-row row groups), and hashes about 22 million values a second on an
+  Apple M2 laptop. A file with a nested column has no data hash in
+  version 1; `DataHashError` names the column. useful-views does not record
+  data hashes yet.
+- New pages: "Stale views and fingerprints" (concepts), "Try it: two
+  fingerprints" (guides) and "Data hash rules" (reference), with a figure of
+  hashing time and memory by the size of the view.
+- For maintainers: `scripts/benchmark_data_hash.py` measures hashing time
+  and memory and redraws that figure
+  (`uv run --group bench python scripts/benchmark_data_hash.py`). Its
+  plotting library, matplotlib, is in a new `bench` dependency group, so
+  users never install it.
+
 ## 0.1.0 (2026-10-15)
 
 The first release: the minimum version.
