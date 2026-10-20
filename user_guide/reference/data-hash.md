@@ -120,23 +120,38 @@ the file, so it counts, like any other. To leave it out, write with
 
 ## Speed
 
-![How long data_hash takes, by the view's size and by column type](data-hash-speed.svg)
+![How long data_hash takes and how much memory it uses, by the view's size and by column type](data-hash-speed.svg)
 
-The figure shows how long `data_hash` takes on one computer, an Apple M2
-laptop, named under the figure. On the left are views of growing size, with
-a mix of integer, float, text and timestamp columns. The lines are straight
-and evenly spaced, so the time grows in step with the number of values, rows
-times columns: about 20 million values a second, so a view of 10 million rows
-and 4 columns takes about 2 seconds. The dashed lines are the time to read
-the same file with pyarrow; hashing takes longer, because every value is
-encoded. On the right is the speed for each column type: text and timestamps
-take about twice as long per value as integers and floats.
+The figure shows `data_hash` on one computer, an Apple M2 laptop, named
+under the figure.
 
-`data_hash` reads one column of one row group at a time, never the whole
-table, so it holds only part of a large view in memory at a time. The figure is made
-by `scripts/benchmark_data_hash.py` in the useful-views repository, which
-also saves the timings, with the computer and versions, in
-[data-hash-speed.json](data-hash-speed.json).
+- **Time** (top left), for views of growing size with a mix of integer,
+  float, text and timestamp columns. The lines are straight and evenly
+  spaced: the time grows in step with the number of values, rows times
+  columns, at about 22 million values a second. A view of 10 million rows
+  and 4 columns takes about 2 seconds; one of 10 million rows and 256
+  columns, 2.56 billion values and 15 GB on disk, takes 2 minutes. The dashed
+  lines are the time to read the same file a column at a time, as
+  `data_hash` does. Hashing takes about 9 times as long, because every value
+  is encoded.
+- **Memory** (top right). `data_hash` reads one column of one row group at a
+  time, never the whole table. Its memory grows with the number of rows only
+  until a view fills one row group, a million rows in these files, then
+  stays level however many rows and columns follow: about 250 MB, of which
+  about 100 MB is Python with pyarrow loaded. The 15 GB view needed no more
+  memory than a 23 MB one.
+- **Column types** (bottom). Text and timestamps take about twice as long
+  per value as integers and floats.
+
+How much memory depends on the file's row groups, which the library that
+wrote it chose: pyarrow and pandas write up to about a million rows per row
+group, and polars fewer. The same view of 10 million rows and 4 columns,
+written as a single row group, needs 1.3 GB instead of 250 MB, in the same
+time.
+
+The figure is made by `scripts/benchmark_data_hash.py` in the useful-views
+repository, which also saves every timing and peak memory, with the computer
+and versions, in [data-hash-speed.json](data-hash-speed.json).
 
 To time it on your computer:
 

@@ -117,6 +117,16 @@ def data_hash(path: str | os.PathLike) -> str:
         raise DataHashError("Data hashes can only be computed on little-endian computers.", path=name)
     try:
         parquet = pq.ParquetFile(path)
+    except (OSError, pa.ArrowException) as error:
+        raise DataHashError(f"{name} could not be read as a parquet file: {error}", path=name) from error
+    # Closed when done, even on an error, so the file can be replaced or
+    # deleted straight away (Windows refuses while it is open).
+    with parquet:
+        return _digest(parquet, name)
+
+
+def _digest(parquet: pq.ParquetFile, name: str) -> str:
+    try:
         schema = parquet.schema_arrow
     except (OSError, pa.ArrowException) as error:
         raise DataHashError(f"{name} could not be read as a parquet file: {error}", path=name) from error
@@ -134,9 +144,10 @@ def data_hash(path: str | os.PathLike) -> str:
 
     digests = [hashlib.sha256() for _ in kinds]
     names = schema.names
+    unique = len(set(names)) == len(names)
     try:
         for group in range(parquet.num_row_groups):
-            if len(set(names)) == len(names):
+            if unique:
                 # Each column is read only when its turn comes, so only one
                 # column chunk is in memory at a time.
                 columns = (parquet.read_row_group(group, columns=[n]).column(0) for n in names)

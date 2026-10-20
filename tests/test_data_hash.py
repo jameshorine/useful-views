@@ -13,6 +13,7 @@ import datetime as dt
 import decimal
 import hashlib
 import math
+import os
 import struct
 import sys
 from pathlib import Path
@@ -331,6 +332,25 @@ def test_every_column_counts_including_a_pandas_index(tmp_path):
     # The default 0, 1, 2, ... index is not saved as a column.
     pd.DataFrame({"x": [1, 2, 3]}).to_parquet(tmp_path / "default.parquet")
     assert uvs.data_hash(tmp_path / "default.parquet") == uvs.data_hash(tmp_path / "without.parquet")
+
+
+def test_the_file_is_closed_afterwards(tmp_path, monkeypatch):
+    """Even after an error, so the file can be replaced or deleted (Windows
+    refuses while it is open)."""
+    closed = []
+    close = pq.ParquetFile.close
+    monkeypatch.setattr(pq.ParquetFile, "close", lambda self, *a, **k: closed.append(1) or close(self, *a, **k))
+    path = tmp_path / "t.parquet"
+    pq.write_table(pa.table({"x": [1, 2]}), path)
+    uvs.data_hash(path)
+    pq.write_table(pa.table({"x": [3]}), tmp_path / "new.parquet")
+    os.replace(tmp_path / "new.parquet", path)  # replace the file just hashed
+    nested = tmp_path / "nested.parquet"
+    pq.write_table(pa.table({"x": [[1], None]}), nested)
+    with pytest.raises(uvs.DataHashError) as caught:
+        uvs.data_hash(nested)
+    nested.unlink()  # while the error, and its traceback, are still alive
+    assert caught.value.column == "x" and len(closed) == 2
 
 
 def test_one_column_in_memory_at_a_time(tmp_path, monkeypatch):
