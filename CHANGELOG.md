@@ -4,6 +4,18 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
+## Unreleased
+
+- `data_hash(path)` computes a parquet file's data hash: a fingerprint of
+  the table it holds, the same whichever library or version wrote the file.
+  The rules are fixed and versioned (`datahash1`), on the new "Data hash
+  rules" page, and pinned by test files written by pyarrow, polars and
+  pandas. A file with a nested column has no data hash in version 1;
+  `DataHashError` names the column. useful-views does not record data hashes
+  yet.
+- New pages: "Stale views and fingerprints" (concepts) and "Try it: two
+  fingerprints" (guides).
+
 ## 0.1.0 (2026-10-15)
 
 The first release: the minimum version.

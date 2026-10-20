@@ -60,6 +60,7 @@ user_guide:
       - reference/check-findings.md
       - reference/environment.md
       - reference/rules.md
+      - reference/data-hash.md
 
 reference:
   - title: Functions
@@ -80,6 +81,10 @@ reference:
       - SyncResult
       - Finding
       - CookbookResult
+  - title: Fingerprints
+    desc: A fingerprint of a parquet file's contents, by the data hash rules.
+    contents:
+      - data_hash
   - title: Errors and warnings
     desc: Every error is a UsefulViewsError and carries its facts as attributes and to_dict().
     contents:
@@ -91,6 +96,7 @@ reference:
       - ProjectNotFound
       - ExampleError
       - CookbookError
+      - DataHashError
       - UsefulViewsWarning
   - title: Rules
     desc: The numbered rules a recipe must follow.

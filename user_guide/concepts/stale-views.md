@@ -113,19 +113,22 @@ can mean two things:
 | **Data hash** | the column names and types and the values, in a fixed form | Does this view hold the same data as the recorded one, whoever made it? |
 
 The file hash alone is not enough, because a parquet file's bytes depend on
-the library that wrote it, not only on the data. The same small table, saved
-once with polars and once with pyarrow:
+the library that wrote it, not only on the data. The sensor readings from
+[Try it: two fingerprints](../guides/fingerprints.md), saved once with polars
+and once with pyarrow:
 
 | | Written by polars | Written by pyarrow |
 |---|---|---|
 | Same data? | yes | yes |
-| File hash | `ef0fd06d…` | `463618c5…` |
-| Data hash | `5d66179c…` | `5d66179c…` |
+| File hash | `49ad3771…` | `1d3019f4…` |
+| Data hash | `76c92a8b…` | `76c92a8b…` |
 
 So the file hash is exact on one computer, and the data hash is what a
 co-author, a reviewer or a CI job can compare. To see both for yourself,
 including how row order and the last digit of a number affect them, work
 through [Try it: two fingerprints](../guides/fingerprints.md).
+`uvs.data_hash()` already computes the data hash of any parquet file, by the
+[data hash rules](../reference/data-hash.md); recording it is what is planned.
 
 **3. Deterministic results.** With both, useful-views could also check that
 a recipe gives the same data from the same inputs and code. When it does

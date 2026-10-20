@@ -4,9 +4,10 @@ title: "Try it: two fingerprints"
 
 [Stale views and fingerprints](../concepts/stale-views.md) explains why
 useful-views is planned to record two fingerprints for each view: a **file
-hash** and a **data hash**. useful-views does not compute them yet. This
-guide does it by hand, in a few lines of Python, so you can see for yourself
-what each one notices and why one alone is not enough.
+hash** and a **data hash**. This guide computes both by hand, in a few lines
+of Python, so you can see for yourself what each one notices and why one
+alone is not enough. At the end, you check the result against useful-views'
+own data hash.
 
 You need polars and pyarrow, which the [quickstart](../quickstart.md) setup
 installs. Work in a new, empty folder, and run each block in order, in one
@@ -160,6 +161,29 @@ Shown to a few decimal places, both are 0.6. Fingerprints are exact, so they
 count the difference in the 16th digit. That is honest: the two results are
 not identical. Deciding that two numbers are close enough is a comparison
 with a tolerance, which is a separate question from whether anything changed.
+
+## 6. useful-views' own data hash
+
+The `data_hash` above is a sketch. useful-views has the real one,
+`uvs.data_hash()`. It follows exact, versioned
+[rules](../reference/data-hash.md), and it reads a large file a column at a
+time:
+
+```python
+import useful_views as uvs
+
+print(uvs.data_hash("readings.parquet"))
+print(uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet"))
+```
+
+```text
+datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18
+True
+```
+
+Your first line should match this one character for character. The data
+hash depends only on the readings, so it is the same on every computer,
+whichever library wrote the file.
 
 ## What each fingerprint notices
 

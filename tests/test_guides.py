@@ -35,4 +35,4 @@ def test_guide_runs_and_prints_what_it_shows(name, tmp_path, monkeypatch):
         if i + 1 < len(found) and found[i + 1][0] == "text":
             assert printed.getvalue() == found[i + 1][1], f"{name}, block {i} prints something else"
             checked += 1
-    assert checked >= 5
+    assert checked >= 6
