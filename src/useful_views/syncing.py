@@ -419,7 +419,9 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     write_generated(project, data)
     ran: list[str] = []
     deleted: list[str] = []
-    if before != render_catalog(data) and not (plan.removed or plan.dropped):
+    # Compared with the catalog of the file as it was read, as check does: a
+    # catalog that only differs in the order sync now writes is not hand-edited.
+    if before != render_catalog(plan.data) and not (plan.removed or plan.dropped):
         note = f"{CATALOG} did not match datapackage.json, so sync wrote it again."
         collected.append(note)
         warn(note)
@@ -480,6 +482,7 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     # interrupt, a signal between recipes), what is left is cleaned up and
     # explained.
     current = None
+    known: dict = {}  # fingerprints taken during this sync, so a view made is not hashed again when read
     try:
         for name in plan.order:
             current = name
@@ -488,7 +491,7 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
             try:
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", UsefulViewsWarning)
-                    _run(project, name, in_sync=True)
+                    _run(project, name, in_sync=True, known=known)
             finally:
                 show(caught)
             ran.append(name)

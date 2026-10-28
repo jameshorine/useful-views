@@ -16,7 +16,7 @@ from .errors import ProjectError, UsefulViewsError
 from .paths import RAW
 from .project import find_root
 from .lock import project_lock
-from .record import load_datapackage, write_atomic
+from .record import load_datapackage, run_order, write_atomic
 
 COOKBOOK = "cookbook.json"
 FORMAT_VERSION = 1
@@ -83,33 +83,10 @@ class CookbookResult:
         }
 
 
-def _run_order(records: dict[str, dict]) -> list[str]:
-    """Recipe names, upstream first; recipes that do not depend on each other
-    in name order."""
-    makers = {out: name for name, r in records.items() for out in r["outputs"]}
-    upstream = {
-        name: sorted({makers[i] for i in r["inputs"] if i in makers} - {name}) for name, r in records.items()
-    }
-    order: list[str] = []
-    done: set[str] = set()
-
-    def visit(name: str, seen: tuple[str, ...] = ()) -> None:
-        if name in done or name in seen:
-            return
-        for up in upstream[name]:
-            visit(up, (*seen, name))
-        done.add(name)
-        order.append(name)
-
-    for name in sorted(records):
-        visit(name)
-    return order
-
-
 def build(data: dict) -> dict:
     """The cookbook for a project's recorded recipes (datapackage.json)."""
     records = {r["name"]: r for r in data["recipes"]}
-    order = _run_order(records)
+    order = run_order(records)
     raw = sorted({p for r in records.values() for p in r["inputs"] if p.startswith(f"{RAW}/")})
     return {
         "version": FORMAT_VERSION,

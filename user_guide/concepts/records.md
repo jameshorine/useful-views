@@ -21,16 +21,31 @@ whenever every recorded file is present. It sits at the project root because
 it describes files in both `raw/` and `useful-views/`.
 
 - `resources` lists every raw file a recorded recipe read, then every view,
-  each with its columns and their types. A view also has `producedBy`: the
-  recipe that made it and that recipe's inputs.
+  each with its columns and their types. A view also has its `fingerprint`
+  and `producedBy`: the recipe that made it, that recipe's inputs, and the
+  fingerprints those inputs had when it ran (see
+  [Fingerprints](#fingerprints) below).
 - `recipes` lists each recorded recipe with its description, inputs,
   outputs and steps, as they were at its last successful run.
+
+Recipes, and the views under them, are listed in the order they run, so the
+file reads in the order the data is made. Each view starts with what it is
+and where it came from; its columns come last. Anything short, such as a
+column or a list of paths, is on one line.
 
 ```json
 {
   "name": "gdp-per-capita",
-  "type": "table",
   "path": "useful-views/gdp-per-capita.parquet",
+  "fingerprint": "datahash1:sha256:69378218dc105ea3cc282fc234f9e6646592d4877692a013eb0cf67305e5cfe1",
+  "producedBy": {
+    "recipe": "gdp_per_capita",
+    "inputs": ["useful-views/pwt-panel.parquet"],
+    "inputFingerprints": {
+      "useful-views/pwt-panel.parquet": "datahash1:sha256:bdc104f8b4ba8296317c5c9eb9b5500cece148f7c7e36318d423ba60fa806d14"
+    }
+  },
+  "type": "table",
   "scheme": "file",
   "format": "parquet",
   "mediatype": "application/parquet",
@@ -39,10 +54,6 @@ it describes files in both `raw/` and `useful-views/`.
       {"name": "iso", "type": "string"},
       {"name": "year", "type": "integer"}
     ]
-  },
-  "producedBy": {
-    "recipe": "gdp_per_capita",
-    "inputs": ["useful-views/pwt-panel.parquet"]
   }
 }
 ```
@@ -59,6 +70,54 @@ without the extension, lowercased, with `/` and other characters than
 `wave1-survey`. Accented letters lose their accents, and letters of other
 scripts are written as their Unicode code point, so names stay distinct. Two
 recorded files may not share one ([rule 8](../reference/rules.md)).
+
+## Fingerprints
+
+When a recipe runs, useful-views takes two kinds of fingerprint, both
+[data hashes](../reference/data-hash.md) of a view's contents:
+
+- just before the steps run, the fingerprint of each view the recipe reads,
+  recorded in `producedBy.inputFingerprints`;
+- right after they succeed, the fingerprint of each view it made, recorded
+  in `fingerprint`.
+
+This is how the parts of `datapackage.json` refer to each other:
+
+```text
+datapackage.json
+├── resources                    one entry per file
+│   ├── a raw file               name, path, format, schema
+│   └── a view
+│       ├── name, path           the view's path identifies it
+│       ├── fingerprint          what the view holds, as a data hash
+│       ├── producedBy
+│       │   ├── recipe           → the recipe of that name in `recipes`
+│       │   ├── inputs           → the paths of the raw files and views it read
+│       │   └── inputFingerprints  { path of each view in `inputs` : its fingerprint then }
+│       └── schema               its columns and their types
+└── recipes                      one entry per recipe, in run order
+    └── a recipe                 name, description, path, inputs, outputs, steps
+```
+
+A view's `inputFingerprints` says what each view it read held at the time,
+and that view's own `fingerprint` says what it holds now. In the quickstart
+project, with the fingerprints shortened to four characters:
+
+| View | Its fingerprint | Made from | That input's fingerprint then |
+|---|---|---|---|
+| pwt-panel | `bdc1` | the raw CSV | (raw files have none yet) |
+| gdp-per-capita | `6937` | pwt-panel | `bdc1` |
+
+The two `bdc1`s match: gdp-per-capita was made from pwt-panel as it is. Fix a
+step of `pwt_panel` and run only that recipe, and if the fix changes the data,
+pwt-panel's fingerprint changes, say to `7a2e`, while gdp-per-capita still
+records `bdc1`: it was made from the old pwt-panel.
+
+A view whose columns the data hash does not cover yet (a list, struct or map
+in each cell) has the fingerprint `null`. Records written before
+fingerprints, by useful-views 0.1, have none; they stay valid, and each view
+gets its fingerprint the next time its recipe runs (`useful-views sync
+--all` runs them all).
 
 ## useful-views/README.md
 
@@ -77,7 +136,9 @@ with its steps. See [Cookbook](cookbook.md).
 ## What the record does not track yet
 
 The record says which recipe made each view, from which inputs, with which
-steps. It does not yet record checksums of the files, so it cannot tell that
-a raw file, a step's code or a view changed after the run. See
+steps, and the fingerprints of the views involved. It does not yet record
+fingerprints of raw files or of steps' code, and `check` and `sync` do not
+yet compare fingerprints, so nothing yet reports that a view was made from
+an older version of another. See
 [Stale views and fingerprints](stale-views.md) for what that means, what to
 do today, and what is planned.

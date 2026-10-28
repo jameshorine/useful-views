@@ -20,9 +20,11 @@ import useful_views as uvs
 uvs.data_hash("useful-views/gdp-per-capita.parquet")
 ```
 
-useful-views does not record data hashes yet. These rules come first, so
-that every version of useful-views, on every computer, and any other program
-that follows them, computes the same hash for the same table.
+When a recipe runs, useful-views records the data hash of each view it
+makes, and of each view it reads, in `datapackage.json` (see
+[Fingerprints](../concepts/records.md#fingerprints)). These rules are
+fixed, so that every version of useful-views, on every computer, and any
+other program that follows them, computes the same hash for the same table.
 
 ## In short
 

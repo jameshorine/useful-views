@@ -127,8 +127,11 @@ So the file hash is exact on one computer, and the data hash is what a
 co-author, a reviewer or a CI job can compare. To see both for yourself,
 including how row order and the last digit of a number affect them, work
 through [Try it: two fingerprints](../guides/fingerprints.md).
-`uvs.data_hash()` already computes the data hash of any parquet file, by the
-[data hash rules](../reference/data-hash.md); recording it is what is planned.
+`uvs.data_hash()` computes the data hash of any parquet file, by the
+[data hash rules](../reference/data-hash.md). useful-views already records
+each view's data hash, and those of the views each recipe read, in
+`datapackage.json` (see [Fingerprints](records.md#fingerprints)); comparing
+them in `check` and `sync` is next.
 
 **3. Deterministic results.** With both, useful-views could also check that
 a recipe gives the same data from the same inputs and code. When it does

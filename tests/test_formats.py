@@ -649,7 +649,8 @@ def test_multiple_inputs_and_outputs_end_to_end(driver, project):
         "raw/alpha.csv", "raw/zeta.csv", "useful-views/a-view.parquet", "useful-views/b-view.parquet",
     ]
     for r in data["resources"][2:]:
-        assert r["producedBy"] == {"recipe": "multi", "inputs": ["raw/zeta.csv", "raw/alpha.csv"]}
+        assert r["producedBy"] == {"recipe": "multi", "inputs": ["raw/zeta.csv", "raw/alpha.csv"],
+                                   "inputFingerprints": {}}  # raw files have no fingerprints yet
     assert data["recipes"][0]["outputs"] == outputs
     text = catalog(project)
     assert text.count("- Inputs: `raw/zeta.csv`, `raw/alpha.csv`\n") == 2
@@ -878,6 +879,11 @@ def test_generated_files_lf_only_and_exact_layout(driver, project):
         assert b"\r" not in blob
         blob.decode("utf-8")
         assert not blob.startswith(b"\xef\xbb\xbf")
-    assert dp.decode("utf-8") == json.dumps(json.loads(dp), indent=2, ensure_ascii=False) + "\n"
+    # Laid out to be read (record.render_datapackage), and stable: laying it out again changes nothing.
+    from useful_views.record import render_datapackage
+
+    assert dp.decode("utf-8") == render_datapackage(json.loads(dp))
+    view = json.loads(dp)["resources"][-1]
+    assert list(view)[:4] == ["name", "path", "fingerprint", "producedBy"]
     assert cat.endswith(b"\n") and not cat.endswith(b"\n\n")
     assert recorded(project, "demo")["description"] == "CRLF in, LF out."
