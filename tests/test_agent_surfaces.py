@@ -86,7 +86,7 @@ def test_json_success_outputs(project):
     out = cli("sync", "--json", cwd=project)
     data = json.loads(out.stdout)  # the step's own print must not break the JSON
     assert out.returncode == 0 and data == {"ok": True, "removed": [], "dropped": [], "deleted": [],
-                                            "ran": ["a"], "reasons": {"a": "never-run"}, "warnings": []}
+                                            "ran": ["a"], "reasons": {"a": "never-run"}, "skipped": [], "warnings": []}
     assert "hello from the step" in out.stderr and "useful-views: running recipes/a" in out.stderr
     data = json.loads(cli("run", "a", "--json", cwd=project).stdout)
     assert data == {"ok": True, "recipe": "a", "outputs": ["useful-views/a.parquet"], "warnings": []}

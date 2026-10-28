@@ -136,9 +136,11 @@ with its steps. See [Cookbook](cookbook.md).
 ## What the record does not track yet
 
 The record says which recipe made each view, from which inputs, with which
-steps, and the fingerprints of the views involved. It does not yet record
-fingerprints of raw files or of steps' code, and `check` and `sync` do not
-yet compare fingerprints, so nothing yet reports that a view was made from
-an older version of another. See
+steps, and the fingerprints of the views involved. `check` and `sync`
+compare those fingerprints with each other, so they report a view made
+from an older version of another (`input-data-changed`). The record does
+not yet hold fingerprints of raw files or of steps' code, and nothing yet
+compares a view's file on disk with its record, as is needed after a
+`git pull`. See
 [Stale views and fingerprints](stale-views.md) for what that means, what to
 do today, and what is planned.

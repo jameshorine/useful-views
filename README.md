@@ -305,16 +305,19 @@ an environment match its lock file. Records only ever come from real runs.
    recipe no longer lists in its outputs, along with those view files. It
    warns about recipes that read a removed view.
 3. It runs, upstream first, every recipe that has never run, whose
-   `recipe.toml` or steps no longer match its record, or whose views are
-   missing, and everything downstream of those. `--all` (`all=True`) runs
-   every recipe. It stops at the first failure or interruption; recipes
-   that ran before it stay recorded, and the message says what to run next.
+   `recipe.toml` or steps no longer match its record, whose views are
+   missing, or that read a view since made again with different data, and
+   everything downstream of those. A recipe downstream is skipped if the
+   views it reads come out the same. `--all` (`all=True`) runs every recipe.
+   It stops at the first failure or interruption; recipes that ran before it
+   stay recorded, and the message says what to run next.
 
 On a fresh clone, place the raw files and run `useful-views sync` to make
 every view. `sync` does not notice a change inside a step's code, a raw file
 replaced under the same name, or a `git pull` or branch switch (the views
-are not in git). After any of those, use `sync --all`, or `run` the changed
-recipe and then each recipe downstream of it.
+are not in git). After any of those, use `sync --all`. After changing a
+step's code, you can instead `run` that recipe and then `useful-views sync`,
+which runs whatever downstream now reads different data.
 
 Only one command that changes a project runs at a time: a second `run`,
 `sync` or `cookbook` started meanwhile is refused instead of overwriting the
@@ -336,7 +339,7 @@ project you did not write, or changes someone proposes, before running them.
 | `refused` | A recipe breaks a rule, so `run` and `sync` would refuse it. The finding names the rule. |
 | `missing-input` | An input a `recipe.toml` declares is not on disk. |
 | `never-run` | A recipe that has never run successfully. |
-| `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, or a view it reads will be made again. |
+| `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, a view it reads was made again with different data since it ran (`input-data-changed`), or a view it reads will be made again. |
 | `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. `sync` removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
 | `stale-cookbook` | `cookbook.json` no longer matches the recorded recipes. Update it with `useful-views cookbook`. |
@@ -345,7 +348,8 @@ project you did not write, or changes someone proposes, before running them.
 
 Each finding says what to do about it, and `check` uses the same plan as
 `sync`, so a clean `check` means `sync` has nothing to refuse. It does not
-notice changes inside a step's code or to a file's contents.
+notice changes inside a step's code or to a raw file's contents until that
+recipe runs again.
 
 ### Rules
 
@@ -527,10 +531,11 @@ rules they can check against.
 ## Open Questions (Planned Enhancements)
 
 - Fingerprints. useful-views records a fingerprint of every view (its data
-  hash) and of the views each recipe read. Next, `check` and `sync` will
-  compare them to find stale views. Later: fingerprints of raw files, recipe
-  files and steps, and the environment the steps ran in, locking them the way
-  `uv.lock` locks a Python environment.
+  hash) and of the views each recipe read, and `check` and `sync` compare
+  them to find views made from older data. Next: comparing each view's file
+  on disk with its record, which catches a `git pull`. Later: fingerprints of
+  raw files, recipe files and steps, and the environment the steps ran in,
+  locking them the way `uv.lock` locks a Python environment.
 - We defined a step to have a "floor" size: any one-change in a data frame means we took a step. Should there be an upper limit on the size of a step? i.e. if we chain togther, say, 100 different operations, should that count as a step? Should there be an upper limit on how much a step does? 
 - How can we document and record where a raw file came from and how to fetch it again? Is it just a document of instrutions? 
 - More view formats alongside parquet, such as CSV and Arrow.

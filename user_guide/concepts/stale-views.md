@@ -40,12 +40,16 @@ useful-views run pwt_panel
 ```
 
 The panel is right again, but `gdp-per-capita.parquet` still says US$69: it
-was made from the old panel. `run` warns once, naming `recipes/gdp_per_capita`.
-Miss that warning, and nothing else tells you: `check` says
-`No problems found.`, `sync` says everything is in sync, and
-`cookbook --check` passes. A recipe's record holds its steps' names and top
-comments, not their code, so a fix inside a step's code changes nothing that
-useful-views compares.
+was made from the old panel. useful-views notices: the fix changed the
+panel's data, and so its fingerprint, while `gdp_per_capita`'s record still
+holds the fingerprint of the panel it read. `run` warns, naming
+`recipes/gdp_per_capita`; `check` reports it as out of date
+(`input-data-changed`); `cookbook --check` fails; and `useful-views sync`
+runs it.
+
+What is not noticed is the fix itself, until the recipe runs. A recipe's
+record holds its steps' names and top comments, not their code, so if you
+fix the step but do not run it, `check` says `No problems found.`
 
 ### A corrected raw file
 
@@ -64,7 +68,7 @@ comes from the old code.
 
 ## What to do today
 
-After any of these, make every view again:
+The simplest answer, after any of these, is to make every view again:
 
 ```sh
 useful-views sync --all
@@ -72,7 +76,7 @@ useful-views sync --all
 
 | When you... | Do this |
 |---|---|
-| fix or change the code inside a step, or a helper module | `useful-views sync --all` (or `run` that recipe, then each recipe `run` names) |
+| fix or change the code inside a step, or a helper module | `useful-views run` that recipe, then `useful-views sync` (or `useful-views sync --all`) |
 | replace a file in `raw/` under the same name | `useful-views sync --all`, or give the new version a new name and update `inputs`, which `sync` notices |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
 
@@ -81,8 +85,14 @@ What useful-views does catch today:
 - an edited `recipe.toml`, a step added, removed or renamed, and a step's
   changed top comment: `check` reports the recipe as out of date, and `sync`
   runs it and everything downstream of it;
+- a view made from an older version of another: the fingerprints in
+  `datapackage.json` show it (`input-data-changed`), so `check` reports it,
+  `sync` runs its recipe, and `cookbook --check` fails, even in CI without
+  the data;
 - after `run`, a warning naming the recipes that read the views it just made
-  again;
+  again, when their data changed. A recipe run again that makes the same
+  data leaves the recipes downstream of it up to date, and `sync` skips
+  them;
 - when `sync` stops partway, it removes the views it would have left stale,
   so the next `sync` makes them again.
 
@@ -130,8 +140,10 @@ through [Try it: two fingerprints](../guides/fingerprints.md).
 `uvs.data_hash()` computes the data hash of any parquet file, by the
 [data hash rules](../reference/data-hash.md). useful-views already records
 each view's data hash, and those of the views each recipe read, in
-`datapackage.json` (see [Fingerprints](records.md#fingerprints)); comparing
-them in `check` and `sync` is next.
+`datapackage.json` (see [Fingerprints](records.md#fingerprints)), and
+`check` and `sync` compare them to find a view made from an older version
+of another. Comparing each view's file on disk with its record, which
+catches a `git pull`, is next.
 
 **3. Deterministic results.** With both, useful-views could also check that
 a recipe gives the same data from the same inputs and code. When it does

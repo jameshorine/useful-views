@@ -173,7 +173,7 @@ instead.
 A step run by hand writes its files but records nothing, and `sync` and
 `check` do not notice it: they report everything in sync while
 `datapackage.json` and the catalog still describe the views from the last
-recorded run. Afterwards, run `useful-views run <recipe>` and then each
-recipe downstream of it (`run` names them), or `useful-views sync --all`.
+recorded run. Afterwards, run `useful-views run <recipe>` and then
+`useful-views sync`, or `useful-views sync --all`.
 
 Rules 2 and 3 are about steps; [Rules](../reference/rules.md) lists them all.

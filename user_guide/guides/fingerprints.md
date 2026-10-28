@@ -199,7 +199,5 @@ whichever library wrote the file.
 The two answer different questions. The file hash asks "is this the file
 that was recorded?", and is the cheap, exact check on one computer. The data
 hash asks "is this the same data?", and is the one that works across
-computers, co-authors and library versions. Together with fingerprints of
-the inputs and code, they are what the planned
-[stale-view checks](../concepts/stale-views.md#what-is-planned-fingerprints)
-are built on.
+computers, co-authors and library versions. The data hash is what
+useful-views' [stale-view checks](../concepts/stale-views.md) are built on.

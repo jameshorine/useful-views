@@ -28,7 +28,9 @@ NOT_BLOCKING = {"stray-file", "stale-cookbook", "stale-catalog"}
 # the recipe folders count; they need no data on disk, so a CI job with only
 # the git checkout (no raw/, no views) gets a real answer.
 RECORD_KINDS = {"unreadable-recipe", "refused", "never-run", "missing-recipe-folder"}
-RECORD_REASONS = {"changed", "outputs-changed", "outputs-dropped"}
+# "input-data-changed" too: datapackage.json disagrees with itself (a view's
+# recorded input fingerprint no longer matches that input's own).
+RECORD_REASONS = {"changed", "outputs-changed", "outputs-dropped", "input-data-changed"}
 
 
 def _out_of_record(finding) -> bool:

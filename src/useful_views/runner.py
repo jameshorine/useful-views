@@ -25,7 +25,8 @@ from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
 from .record import (
-    assemble, describe_view, known_fingerprint, load_datapackage, retry, split_resources, write_generated,
+    assemble, describe_view, fingerprints_differ, known_fingerprint, load_datapackage, retry, split_resources,
+    stale_inputs, write_generated,
 )
 from .rules import check_all
 
@@ -568,7 +569,8 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         all_views = {p: r for p, r in old_views.items() if r["producedBy"].get("recipe") != name}
         all_views.update(views)
         all_raws = {**old_raws, **raw_described}
-        write_generated(project, assemble(project, records, all_views, all_raws, data.get("name")))
+        written = assemble(project, records, all_views, all_raws, data.get("name"))
+        write_generated(project, written)
     except BaseException:
         # On any failure from here on, a failed run leaves its views absent.
         try:
@@ -584,12 +586,23 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         if note:
             warn(note, collected)
         stale = _downstream(others, loaded.outputs, data)
-        if stale:
-            warn(
-                f"{RECIPES}/{name} made its views again, so the views of the recipes that read them were made "
-                f"from the old ones: {', '.join(f'{RECIPES}/{n}' for n in stale)}. sync does not notice this "
-                "by itself. Bring them up to date with: useful-views sync --all (or run each of them, upstream "
-                "first).",
-                collected,
-            )
+        # Views whose fingerprint shows the same data as before leave their readers up to date.
+        same = all(fingerprints_differ(old_views.get(o, {}).get("fingerprint"), views[o]["fingerprint"]) is False
+                   for o in loaded.outputs)
+        if stale and not same:
+            listed = ", ".join(f"{RECIPES}/{n}" for n in stale)
+            recorded = {r["name"] for r in data["recipes"]}
+            readers = {n for n, (ins, _) in others.declared.items() if set(ins) & set(loaded.outputs)} & recorded
+            if readers <= set(stale_inputs(written)):
+                # Each reader's record shows it read the old data, so sync sees it too.
+                warn(f"{RECIPES}/{name} made its views again with different data, so the recipes downstream of it "
+                     f"are out of date: {listed}. Bring them up to date with: useful-views sync", collected)
+            else:
+                warn(
+                    f"{RECIPES}/{name} made its views again, so the views of the recipes that read them were made "
+                    f"from the old ones: {listed}. Their records have no fingerprints to show it, so sync does not "
+                    "notice this by itself. Bring them up to date with: useful-views sync --all (or run each of "
+                    "them, upstream first).",
+                    collected,
+                )
     return RunResult(recipe=name, outputs=loaded.outputs, warnings=tuple(collected))

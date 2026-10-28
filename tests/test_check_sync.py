@@ -597,9 +597,25 @@ def test_sync_reruns_a_changed_recipe_and_everything_downstream(driver, project)
     uvs.sync(root=project)
     write(project, "recipes/up/recipe.toml",
           'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
+    write(project, "recipes/up/01_make.py",  # and its data changes too
+          "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
+          "pq.write_table(pa.table({'id': [7, 8, 9]}), 'useful-views/up.parquet')\n")
     out = driver.sync()
     assert out.ok and ran(driver, out) == ["up", "down"]
     assert next(r for r in load(project)["recipes"] if r["name"] == "up")["description"] == "Changed."
+
+
+def test_sync_skips_downstream_when_a_changed_recipe_makes_the_same_data(project):
+    chain_project(project)
+    uvs.sync(root=project)
+    write(project, "recipes/up/recipe.toml",
+          'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
+    before = (project / "useful-views" / "down.parquet").stat().st_mtime_ns
+    result = uvs.sync(root=project)
+    # up ran again and made the same data, so down, which reads it, is still up to date.
+    assert result.ran == ("up",) and result.skipped == ("down",)
+    assert (project / "useful-views" / "down.parquet").stat().st_mtime_ns == before
+    assert uvs.check(root=project) == []
 
 
 def test_sync_does_not_rerun_upstream_when_only_downstream_changed(driver, project):
@@ -810,7 +826,8 @@ def test_rename_recipe_folder_then_sync(driver, project):
     # and runs the renamed recipe and everything downstream of it.
     out = driver.sync()
     assert out.ok, out.message
-    assert ran(driver, out) == ["panel", "gdp_per_capita"]
+    # panel makes the same view, with the same data, so gdp_per_capita is still up to date.
+    assert ran(driver, out) == ["panel"]
     data = load(project)
     assert [r["name"] for r in data["recipes"]] == ["panel", "gdp_per_capita"]  # in run order
     view = next(r for r in data["resources"] if r["path"] == "useful-views/pwt-panel.parquet")
