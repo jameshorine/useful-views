@@ -353,19 +353,55 @@ def test_the_file_is_closed_afterwards(tmp_path, monkeypatch):
     assert caught.value.column == "x" and len(closed) == 2
 
 
-def test_one_column_in_memory_at_a_time(tmp_path, monkeypatch):
-    """Each column chunk is hashed before the next is read."""
+def test_one_batch_of_one_column_in_memory_at_a_time(tmp_path, monkeypatch):
+    """However large the file's row groups, a column is read and hashed in
+    batches of BATCH_ROWS rows, each hashed before the next is read."""
     from useful_views import fingerprints
 
+    monkeypatch.setattr(fingerprints, "BATCH_ROWS", 2)
     path = tmp_path / "t.parquet"
-    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [0.5, 1.5, 2.5]}), path, row_group_size=2)
+    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [0.5, 1.5, 2.5]}), path)  # one row group
     events = []
-    read, encode = pq.ParquetFile.read_row_group, fingerprints._encode
-    monkeypatch.setattr(pq.ParquetFile, "read_row_group",
-                        lambda self, *a, **k: events.append("read") or read(self, *a, **k))
-    monkeypatch.setattr(fingerprints, "_encode", lambda *a: events.append("hash") or encode(*a))
-    uvs.data_hash(path)
-    assert events == ["read", "hash"] * 6  # 3 columns in each of 2 row groups
+    iter_batches, encode = pq.ParquetFile.iter_batches, fingerprints._encode
+
+    def batches(self, *args, **kwargs):
+        for batch in iter_batches(self, *args, **kwargs):
+            events.append(("read", batch.num_rows))
+            yield batch
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
+    monkeypatch.setattr(fingerprints, "_encode", lambda chunk, kind: events.append(("hash", len(chunk))) or encode(chunk, kind))
+    assert uvs.data_hash(path) == reference_hash(path)
+    # 3 columns, each in a batch of 2 rows and one of 1.
+    assert events == [("read", 2), ("hash", 2), ("read", 1), ("hash", 1)] * 3
+
+
+def test_batches_stay_within_one_row_group(tmp_path, monkeypatch):
+    """Batches over the whole file would load a column's compressed bytes for
+    every row group at once; one row group at a time keeps memory level."""
+    path = tmp_path / "t.parquet"
+    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}), path, row_group_size=2)
+    asked = []
+    iter_batches = pq.ParquetFile.iter_batches
+
+    def batches(self, *args, **kwargs):
+        asked.append((kwargs.get("columns"), kwargs.get("row_groups")))
+        return iter_batches(self, *args, **kwargs)
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
+    assert uvs.data_hash(path) == reference_hash(path)
+    assert asked == [(["a"], [0]), (["a"], [1]), (["b"], [0]), (["b"], [1])]
+
+
+def test_batches_with_duplicate_column_names(tmp_path, monkeypatch):
+    from useful_views import fingerprints
+
+    monkeypatch.setattr(fingerprints, "BATCH_ROWS", 2)
+    table = pa.Table.from_arrays([pa.array([1, 2, 3]), pa.array(["a", None, "c"]), pa.array([4, 5, None])],
+                                 names=["x", "y", "x"])
+    path = tmp_path / "t.parquet"
+    pq.write_table(table, path)
+    assert uvs.data_hash(path) == reference_hash(path)
 
 
 @pytest.mark.parametrize("table", [
@@ -430,11 +466,13 @@ def test_benchmark_script_still_works(tmp_path):
     benchmark = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(benchmark)
     saved = []
-    results = benchmark.run(rows=[100], columns=[1, 5], type_size=(100, 1), repeats=1, chunk_rows=30,
-                            show=lambda line: None, save=lambda r: saved.append(len(r["sizes"]) + len(r["types"])))
+    results = benchmark.run(rows=[100], columns=[1, 5], type_size=(100, 1), one_group=(60, 2), repeats=1,
+                            chunk_rows=30, show=lambda line: None,
+                            save=lambda r: saved.append(len(r["sizes"]) + len(r["types"])))
     assert [(r["rows"], r["columns"]) for r in results["sizes"]] == [(100, 1), (100, 5)]
     assert [r["type"] for r in results["types"]] == benchmark.TYPES
-    assert saved == [1, 2, 3, 4, 5, 6]
+    assert saved == [1, 2, 3, 4, 5, 6, 6, 6]  # and after the one-row-group view, and at the end
+    assert results["one_row_group"]["rows"] == 60 and results["memory_check"]
     for r in results["sizes"] + results["types"]:
         assert r["hash_seconds"] > 0 and r["read_seconds"] > 0 and r["hash_runs"] == 1
         assert r["hash_peak_mb"] is None if sys.platform == "win32" else r["hash_peak_mb"] > 0
@@ -447,3 +485,24 @@ def test_benchmark_script_still_works(tmp_path):
     pytest.importorskip("matplotlib")
     benchmark.plot(results, tmp_path / "speed.svg")
     assert "Time to hash a view" in (tmp_path / "speed.svg").read_text(encoding="utf-8")
+
+
+def test_benchmark_memory_check():
+    """The benchmark warns when peak memory grows with the view's size, as it
+    did before data_hash read in batches."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("benchmark", ROOT / "scripts" / "benchmark_data_hash.py")
+    benchmark = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(benchmark)
+
+    def results(single_peak):
+        sizes = [{"rows": n, "columns": 4, "hash_peak_mb": 254.0} for n in (1_000_000, 3_000_000, 10_000_000)]
+        sizes.append({"rows": 10_000, "columns": 4, "hash_peak_mb": 108.0})  # small views do not count
+        return {"sizes": sizes, "one_row_group": {"rows": 10_000_000, "columns": 4, "hash_peak_mb": single_peak}}
+
+    assert benchmark.memory_check(results(1168.0)).startswith("WARNING")  # measured before batching
+    assert benchmark.memory_check(results(262.0)).startswith("Peak memory stayed level")
+    growing = results(262.0)
+    growing["sizes"][2]["hash_peak_mb"] = 400.0  # 254 MB at a million rows, 400 MB at ten million
+    assert benchmark.memory_check(growing).startswith("WARNING")

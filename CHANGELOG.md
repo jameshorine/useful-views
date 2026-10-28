@@ -10,10 +10,11 @@ All notable changes to useful-views are recorded here. Versions follow
   the table it holds, the same whichever library or version wrote the file.
   The rules are fixed and versioned (`datahash1`), on the new "Data hash
   rules" page, and pinned by test files written by pyarrow, polars and
-  pandas. It reads one column of one row group at a time, so its memory
-  stays level however large the view (about 250 MB for files written in
-  million-row row groups), and hashes about 22 million values a second on an
-  Apple M2 laptop. A file with a nested column has no data hash in
+  pandas. It reads each column in batches of 65,536 rows, one row group at a
+  time, so its memory stays level however large the view and however its
+  file was written (120 to 200 MB up to a 15 GB view on an Apple M2 laptop,
+  270 MB for a file written as a single row group of 10 million rows), and
+  hashes about 22 million values a second. A file with a nested column has no data hash in
   version 1; `DataHashError` names the column.
 - When a recipe runs, `datapackage.json` records each view's fingerprint
   (its data hash, or `null` when a column is not covered) and, in
@@ -30,9 +31,9 @@ All notable changes to useful-views are recorded here. Versions follow
   run order too.
 - New pages: "Stale views and fingerprints" (concepts), "Try it: two
   fingerprints" (guides) and "Data hash rules" (reference), with a figure of
-  hashing time and memory by the size of the view.
+  hashing time by the size of the view and by column type.
 - For maintainers: `scripts/benchmark_data_hash.py` measures hashing time
-  and memory and redraws that figure
+  and peak memory, checks that memory stays level, and redraws that figure
   (`uv run --group bench python scripts/benchmark_data_hash.py`). Its
   plotting library, matplotlib, is in a new `bench` dependency group, so
   users never install it.
