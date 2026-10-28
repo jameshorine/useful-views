@@ -12,6 +12,10 @@ rules" page:
   with the computer and versions, saved after every view;
 - user_guide/reference/data-hash-speed.svg: the figure on that page.
 
+Peak memory is not drawn, but it is measured, saved and checked: at the end
+the script says whether it stayed level as views grew, including for a view
+written as a single large row group, and warns if it did not.
+
 To redraw the figure from the saved timings: add --plot-only. Timings depend
 on the computer, so CI never runs this; tests/test_data_hash.py only checks
 that it still works, at a tiny size.
@@ -50,6 +54,12 @@ COLUMNS = [1, 4, 16, 64, 256]
 TYPES = ["integer", "float", "text", "timestamp"]
 # The by-type panel: one view per type, this many rows and columns.
 TYPE_SIZE = (5_000_000, 4)
+# One more view, written as a single row group of this many rows and columns:
+# data_hash reads in batches, so its memory must not depend on that.
+ONE_GROUP = (10_000_000, 4)
+# Views of at least this many rows hold many batches; their peak memory
+# should be level, whatever their size.
+LEVEL_ROWS = 1_000_000
 # Views are written this many rows at a time, one row group each, so even
 # the largest is never in memory whole.
 CHUNK_ROWS = 1_000_000
@@ -212,9 +222,10 @@ def _command(args: list[str]) -> str | None:
         return None
 
 
-def run(rows=ROWS, columns=COLUMNS, type_size=TYPE_SIZE, repeats=REPEATS, chunk_rows=CHUNK_ROWS,
-        show=print, save=None) -> dict:
-    """Measure every size, then every type. `save(results)` is called after each view."""
+def run(rows=ROWS, columns=COLUMNS, type_size=TYPE_SIZE, one_group=ONE_GROUP, repeats=REPEATS,
+        chunk_rows=CHUNK_ROWS, show=print, save=None) -> dict:
+    """Measure every size, then every type, then the view written as one row
+    group. `save(results)` is called after each view."""
     results = {
         "computer": computer(),
         "repeats": repeats,
@@ -223,6 +234,8 @@ def run(rows=ROWS, columns=COLUMNS, type_size=TYPE_SIZE, repeats=REPEATS, chunk_
         "baseline_peak_mb": None,
         "sizes": [],
         "types": [],
+        "one_row_group": None,
+        "memory_check": None,
     }
     started = time.perf_counter()
 
@@ -249,7 +262,44 @@ def run(rows=ROWS, columns=COLUMNS, type_size=TYPE_SIZE, repeats=REPEATS, chunk_
         for kind in TYPES:
             results["types"].append({"type": kind, **measure(folder, n, [kind] * p, repeats, chunk_rows)})
             done(results["types"][-1], f"{kind:>10}, {n:,} rows × {p} columns")
+        n, p = one_group
+        results["one_row_group"] = measure(folder, n, mixed(p), repeats, n)
+        done(results["one_row_group"], f"{n:,} rows × {p} columns, written as one row group")
+    results["memory_check"] = memory_check(results)
+    show(results["memory_check"])
+    if save:
+        save(results)
     return results
+
+
+def memory_check(results: dict) -> str:
+    """Whether peak memory stayed level as views grew. data_hash holds one
+    batch of one column, and the compressed bytes of that column in one row
+    group, so among views of LEVEL_ROWS rows or more with the same columns
+    the largest peak should be close to the smallest. A view written as one
+    large row group may need more, but not several times more."""
+    peaks: dict[int, list[float]] = {}
+    for r in results["sizes"]:
+        if r["rows"] >= LEVEL_ROWS and r.get("hash_peak_mb"):
+            peaks.setdefault(r["columns"], []).append(r["hash_peak_mb"])
+    if not peaks:
+        return "Peak memory was not measured on this system."
+    columns, worst = max(peaks.items(), key=lambda item: max(item[1]) / min(item[1]))
+    if max(worst) > 1.5 * min(worst):
+        return (f"WARNING: peak memory grows with the view's size: {min(worst):,.0f} to {max(worst):,.0f} MB for "
+                f"{columns}-column views of {LEVEL_ROWS:,} rows or more. data_hash should hold one batch of one "
+                "column at a time.")
+    every = [m for values in peaks.values() for m in values]
+    note = f"Peak memory stayed level: {min(every):,.0f} to {max(every):,.0f} MB for every view of {LEVEL_ROWS:,} rows or more"
+    single = results.get("one_row_group")
+    if single and single.get("hash_peak_mb") and peaks.get(single["columns"]):
+        usual = max(peaks[single["columns"]])
+        if single["hash_peak_mb"] > 3 * usual:
+            return (f"WARNING: a view written as one row group of {single['rows']:,} rows needed "
+                    f"{single['hash_peak_mb']:,.0f} MB, over three times the {usual:,.0f} MB of the same view "
+                    "written in smaller row groups. data_hash should read it in batches.")
+        note += f"; {single['hash_peak_mb']:,.0f} MB for one written as a single row group of {single['rows']:,} rows"
+    return note + "."
 
 
 def caption(results: dict) -> str:
@@ -274,44 +324,29 @@ def plot(results: dict, path: Path) -> None:
     from matplotlib.ticker import FuncFormatter
 
     plt.rcParams.update({"svg.fonttype": "none", "svg.hashsalt": "useful-views", "font.size": 10})
-    figure = plt.figure(figsize=(10, 7.8), facecolor="white")
-    grid = figure.add_gridspec(2, 2, height_ratios=[3, 1.5], width_ratios=[3, 2])
-    timing, memory, speed = figure.add_subplot(grid[0, 0]), figure.add_subplot(grid[0, 1]), figure.add_subplot(grid[1, :])
+    figure, (timing, speed) = plt.subplots(
+        1, 2, figsize=(10, 5.6), gridspec_kw={"width_ratios": [3, 2]}, facecolor="white"
+    )
 
     sizes = results["sizes"]
-    counts = sorted({r["columns"] for r in sizes})
-    for k, p in enumerate(counts):
+    for k, p in enumerate(sorted({r["columns"] for r in sizes})):
         points = sorted((r for r in sizes if r["columns"] == p), key=lambda r: r["rows"])
         x = [r["rows"] for r in points]
         label = f"{p} columns" if p > 1 else f"1 column ({TYPES[0]})"
         timing.plot(x, [r["hash_seconds"] for r in points], marker="o", markersize=4, color=f"C{k}", label=label)
         timing.plot(x, [r["read_seconds"] for r in points], linestyle="--", linewidth=1, color=f"C{k}", alpha=0.4)
-        peaks = [r.get("hash_peak_mb") for r in points]
-        if all(peaks):
-            memory.plot(x, peaks, marker="o", markersize=4, color=f"C{k}")
-    for axes in (timing, memory):
-        axes.set_xscale("log")
-        axes.xaxis.set_major_formatter(FuncFormatter(_count))
-        axes.set_xlabel("Rows")
-        axes.grid(True, which="major", color="0.92")
+    timing.set_xscale("log")
+    timing.xaxis.set_major_formatter(FuncFormatter(_count))
+    timing.set_xlabel("Rows")
+    timing.grid(True, which="major", color="0.92")
     timing.set_yscale("log")
     timing.yaxis.set_major_formatter(FuncFormatter(lambda s, _: f"{s:g} s"))
     timing.set_title("Time to hash a view, by size", loc="left")
     handles, _ = timing.get_legend_handles_labels()
     handles.append(Line2D([], [], linestyle="--", linewidth=1, color="0.5", label="reading the file only"))
-    timing.legend(handles=handles, title="Mixed column types", loc="upper left", frameon=False, fontsize=9,
-                  title_fontsize=9)
-
-    memory.set_title("Peak memory while hashing", loc="left")
-    memory.yaxis.set_major_formatter(FuncFormatter(lambda m, _: f"{m:,.0f} MB"))
-    baseline = results.get("baseline_peak_mb")
-    if baseline:
-        memory.axhline(baseline, linestyle=":", color="0.4", linewidth=1)
-        memory.annotate("Python and pyarrow loaded,\nnothing hashed", (memory.get_xlim()[0], baseline),
-                        xytext=(4, -24), textcoords="offset points", fontsize=8, color="0.35")
-    if not memory.lines:
-        memory.text(0.5, 0.5, "not measured on this system", ha="center", transform=memory.transAxes, color="0.4")
-    memory.set_ylim(bottom=0)
+    # Below the chart, so it never covers a line.
+    timing.legend(handles=handles, title="Mixed column types", loc="upper center", bbox_to_anchor=(0.5, -0.16),
+                  ncol=3, frameon=False, fontsize=9, title_fontsize=9)
 
     types = results["types"]
     speeds = [r["values"] / r["hash_seconds"] / 1e6 for r in types]
@@ -319,14 +354,14 @@ def plot(results: dict, path: Path) -> None:
     speed.invert_yaxis()
     speed.bar_label(bars, labels=[f"{s:.0f}" for s in speeds], padding=3, fontsize=9)
     n, p = types[0]["rows"], types[0]["columns"]
-    speed.set_xlabel(f"Million values a second ({_count(n)} rows × {p} columns of one type)")
+    speed.set_xlabel(f"Million values a second\n({_count(n)} rows × {p} columns of one type)")
     speed.set_title("Speed by column type", loc="left")
-    speed.set_xlim(0, max(speeds) * 1.12)
-    for axes in (timing, memory, speed):
+    speed.set_xlim(0, max(speeds) * 1.18)
+    for axes in (timing, speed):
         axes.spines[["top", "right"]].set_visible(False)
 
     figure.text(0.01, 0.012, caption(results), fontsize=7.5, color="0.35", va="bottom")
-    figure.tight_layout(rect=(0, 0.06, 1, 1))
+    figure.tight_layout(rect=(0, 0.08, 1, 1))
     figure.savefig(path, format="svg", metadata={"Date": None})
     plt.close(figure)
 

@@ -6,8 +6,9 @@ the library that wrote the file, its version, or how the file is compressed
 and encoded. The rules are fixed and versioned (``datahash1``); they are set
 out in user_guide/reference/data-hash.md, and this module follows them.
 
-Values are encoded with pyarrow compute functions, a column chunk at a time,
-so a large view is never held in memory whole.
+Values are encoded with pyarrow compute functions, one batch of one column at
+a time, so a large view is never held in memory whole, however its file was
+written.
 """
 
 from __future__ import annotations
@@ -24,6 +25,11 @@ import pyarrow.parquet as pq
 from .errors import UsefulViewsError
 
 PREFIX = "datahash1:sha256:"
+
+# Rows read and hashed at a time, however large the file's row groups:
+# pyarrow's own default batch size. Measured on 10 million rows, smaller
+# batches use no less memory and larger ones use more, at the same speed.
+BATCH_ROWS = 65_536
 
 _BYTES = pa.large_binary()
 _PRESENT = pa.scalar(b"\x01", _BYTES)
@@ -146,17 +152,24 @@ def _digest(parquet: pq.ParquetFile, name: str) -> str:
     names = schema.names
     unique = len(set(names)) == len(names)
     try:
-        for group in range(parquet.num_row_groups):
-            if unique:
-                # Each column is read only when its turn comes, so only one
-                # column chunk is in memory at a time.
-                columns = (parquet.read_row_group(group, columns=[n]).column(0) for n in names)
-            else:
-                # Duplicate names cannot be read by name.
-                columns = parquet.read_row_group(group).columns
-            for digest, kind, column in zip(digests, kinds, columns):
-                for chunk in column.chunks:
-                    digest.update(_encode(chunk, kind))
+        groups = range(parquet.num_row_groups)
+        if unique:
+            # One column at a time, one row group at a time, in batches of
+            # BATCH_ROWS rows: what is in memory is one batch, and the
+            # compressed bytes of one column of one row group, however large
+            # the file. (Batches across the whole file would load a column's
+            # compressed bytes for every row group at once.)
+            for digest, kind, column_name in zip(digests, kinds, names):
+                for group in groups:
+                    for batch in parquet.iter_batches(batch_size=BATCH_ROWS, row_groups=[group],
+                                                      columns=[column_name]):
+                        digest.update(_encode(batch.column(0), kind))
+        else:
+            # Duplicate names cannot be read by name: every column, a batch at a time.
+            for group in groups:
+                for batch in parquet.iter_batches(batch_size=BATCH_ROWS, row_groups=[group]):
+                    for digest, kind, column in zip(digests, kinds, batch.columns):
+                        digest.update(_encode(column, kind))
     except (OSError, pa.ArrowException) as error:
         raise DataHashError(f"{name} could not be read as a parquet file: {error}", path=name) from error
 
