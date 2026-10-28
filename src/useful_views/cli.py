@@ -341,6 +341,9 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
             print("Deleted: " + ", ".join(result.deleted) + ".")
         if result.ran:
             print("Ran, in order: " + ", ".join(f"recipes/{n}" for n in result.ran) + ".")
+        if result.skipped:
+            print("Up to date after all, not run: " + ", ".join(f"recipes/{n}" for n in result.skipped)
+                  + " (the views they read came out the same).")
         if not (result.removed or result.dropped or result.ran):
             print("Everything is in sync: nothing to remove or run.")
         else:

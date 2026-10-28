@@ -21,8 +21,17 @@ All notable changes to useful-views are recorded here. Versions follow
   `producedBy.inputFingerprints`, the fingerprints of the views the recipe
   read, taken just before its steps ran. Records written by 0.1 stay valid;
   each view gets its fingerprint the next time its recipe runs
-  (`useful-views sync --all` runs them all). `check` and `sync` do not act
-  on fingerprints yet.
+  (`useful-views sync --all` runs them all).
+- `check` and `sync` use the fingerprints. A recipe whose record shows it
+  read a view since made again with different data is `out-of-date`, with
+  the new reason `input-data-changed`: `sync` runs it and what is
+  downstream of it, and `cookbook --check` fails on it, without needing the
+  data. A recipe queued only because a view it reads is made again is
+  skipped when that view comes out the same (`SyncResult.skipped`, and
+  `skipped` in `sync --json`). `run` warns about the recipes downstream only
+  when its views' data changed. Views recorded before fingerprints get a
+  note in `check` and `sync` until `useful-views sync --all` records them.
+  Fingerprints made under different rules are never compared.
 - `datapackage.json` is laid out to be read: recipes, and the views under
   them, in the order they run; each view's name, path, fingerprint and
   `producedBy` first and its columns last; short items on one line. Its

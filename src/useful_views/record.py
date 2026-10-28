@@ -394,6 +394,41 @@ def run_order(records: dict[str, dict]) -> list[str]:
     return order
 
 
+def fingerprints_differ(then: object, now: object) -> bool | None:
+    """Whether two fingerprints show different data: True or False, or None
+    when that is unknown, because one is missing or null, or because they
+    were made under different rules (datahash1 and datahash2 are never
+    compared)."""
+    if not (isinstance(then, str) and isinstance(now, str)):
+        return None
+    if then.rsplit(":", 1)[0] != now.rsplit(":", 1)[0]:
+        return None
+    return then != now
+
+
+def stale_inputs(data: dict) -> dict[str, list[str]]:
+    """For each recorded recipe, the views it read that were made again with
+    different data since it ran: the fingerprint its views recorded for them
+    no longer matches their own. Where that is unknown (fingerprints_differ),
+    it never counts as a change."""
+    views, _ = split_resources(data)
+    found: dict[str, set[str]] = {}
+    for view in views.values():
+        produced = view["producedBy"]
+        for path, then in (produced.get("inputFingerprints") or {}).items():
+            if fingerprints_differ(then, views.get(path, {}).get("fingerprint")):
+                found.setdefault(produced.get("recipe"), set()).add(path)
+    return {name: sorted(paths) for name, paths in found.items()}
+
+
+def unfingerprinted(data: dict) -> list[str]:
+    """Views recorded without a fingerprint, by an earlier version of
+    useful-views. (A view whose fingerprint is null has one that cannot be
+    computed; it is not listed.)"""
+    views, _ = split_resources(data)
+    return sorted(path for path, view in views.items() if "fingerprint" not in view)
+
+
 def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     """Existing resources as (views by path, raws by path)."""
     views, raws = {}, {}

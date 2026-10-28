@@ -66,6 +66,12 @@ with 1, and lists why, when:
   its `recipe.toml` edited, a step added, removed or renamed, a step's top
   comment changed, or an output dropped, and committed without running
   `sync`;
+- a recipe's record shows it read a view whose data has changed since
+  (`out-of-date`, reason `input-data-changed`): someone ran the recipe
+  upstream of it with `useful-views run` and committed without running
+  `sync`. If that data should not have changed, make sure the upstream
+  recipe sorts its rows: the same rows in another order have another
+  fingerprint;
 - a recipe breaks a rule (`refused`), or a folder in `recipes/` has no
   readable `recipe.toml` (`unreadable-recipe`). `sync` does not fix these:
   fix what is listed first.

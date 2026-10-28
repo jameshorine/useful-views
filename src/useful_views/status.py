@@ -24,7 +24,8 @@ KIND_MEANINGS = {
     "missing-input": "An input a recipe.toml declares is not on disk.",
     "never-run": "A recipe that has never run successfully.",
     "out-of-date": "A recipe that sync would run again: its recipe.toml or steps changed since it last ran, its "
-                   "outputs changed, or a view it reads will be made again.",
+                   "outputs changed, a view it reads was made again with different data since it ran, or a "
+                   "view it reads will be made again.",
     "missing-recipe-folder": "datapackage.json records a recipe whose folder is gone. sync removes the record.",
     "missing-view": "A recorded view whose file is missing.",
     "stale-cookbook": "cookbook.json does not match the recorded recipes. Update it with useful-views cookbook.",
@@ -59,8 +60,10 @@ class Finding:
         reason: For `out-of-date`, why: "changed" (its recipe.toml or steps
             no longer match its record), "outputs-changed" (it no longer
             declares any view it made), "outputs-dropped" (it no longer
-            declares some of them; sync removes them without running it) or
-            "upstream" (a view it reads will be made again). For
+            declares some of them; sync removes them without running it),
+            "input-data-changed" (a view it reads was made again with
+            different data since it ran: its recorded fingerprint no longer
+            matches) or "upstream" (a view it reads will be made again). For
             `missing-input`, "made-by-recipe" when the input is a view
             another recipe makes, which sync makes first. Otherwise None.
     """
@@ -177,7 +180,21 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
         "upstream": "a view it reads will be made again by a recipe upstream of it",
     }
     for name, reason in plan.reasons.items():
-        if reason in why and name not in reported:
+        if reason == "input-data-changed" and name not in reported:
+            paths = plan.stale_inputs.get(name, [])
+            findings.append(
+                Finding(
+                    "out-of-date",
+                    f"{RECIPES}/{name}",
+                    f"{RECIPES}/{name} is out of date: {', '.join(paths)} {'was' if len(paths) == 1 else 'were'} "
+                    "made again with different data since it ran. Bring it up to date with: useful-views sync. If "
+                    "that data should not have changed, make sure the recipe that writes it sorts its rows: the same "
+                    "rows in another order have another fingerprint.",
+                    recipe=name,
+                    reason=reason,
+                )
+            )
+        elif reason in why and name not in reported:
             findings.append(
                 Finding(
                     "out-of-date",

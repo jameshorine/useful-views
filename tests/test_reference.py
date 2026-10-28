@@ -9,7 +9,6 @@ import subprocess
 import sys
 
 import polars as pl
-import pytest
 from polars.testing import assert_frame_equal
 
 import useful_views as uvs
@@ -73,6 +72,6 @@ def test_second_run_changes_nothing(reference_project):
     uvs.run("gdp_per_capita", root=reference_project)
     first = generated(reference_project)
     uvs.run("gdp_per_capita", root=reference_project)
-    with pytest.warns(uvs.UsefulViewsWarning, match="recipes/gdp_per_capita"):
-        uvs.run("pwt_panel", root=reference_project)  # its reader is now out of date
+    # The same data again: its reader is still up to date, so there is nothing to warn about.
+    assert uvs.run("pwt_panel", root=reference_project).warnings == ()
     assert generated(reference_project) == first

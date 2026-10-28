@@ -17,10 +17,13 @@ from pathlib import Path
 from .cookbooks import stale_warning
 from .errors import ProjectError, RecipeRefused, UsefulViewsError, UsefulViewsWarning, warn
 from .lock import project_lock
-from .paths import CATALOG, RECIPES, WORK, exists_exact, has_content, is_file, listdir
+from .paths import CATALOG, RECIPES, VIEWS, WORK, exists_exact, has_content, is_file, listdir
 from .project import find_root
 from .recipe import Recipe, declared_paths, load_recipe, read_declaration, resolve_name
-from .record import assemble, load_datapackage, render_catalog, retry, split_resources, write_generated
+from .record import (
+    assemble, fingerprints_differ, load_datapackage, render_catalog, retry, split_resources, stale_inputs,
+    unfingerprinted, write_generated,
+)
 from .rules import Others, check_static
 from .runner import _remove_outputs, _run, _write, rmtree
 
@@ -35,11 +38,15 @@ class SyncResult:
         deleted: Files deleted: views no longer declared, and the work/
             folders of the removed recipes (ending in "/").
         ran: Recipes run, in the order they ran.
+        skipped: Recipes sync meant to run because a view they read was to be
+            made again, but did not: it came out with the same data, so they
+            were still up to date.
         warnings: Warnings issued along the way (also shown as they happen).
         reasons: Why each recipe in `ran` ran: "never-run", "changed" (its
             recipe.toml or steps no longer matched its record),
-            "outputs-changed", "views-missing", "upstream" (a view it reads
-            was made again) or "all" (`all=True`).
+            "outputs-changed", "views-missing", "input-data-changed" (a view
+            it reads had been made again with different data since it ran),
+            "upstream" (a view it reads was made again) or "all" (`all=True`).
     """
 
     removed: tuple[str, ...]
@@ -48,6 +55,7 @@ class SyncResult:
     ran: tuple[str, ...]
     warnings: tuple[str, ...]
     reasons: dict[str, str] = field(default_factory=dict)
+    skipped: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +64,7 @@ class SyncResult:
             "deleted": list(self.deleted),
             "ran": list(self.ran),
             "reasons": dict(self.reasons),
+            "skipped": list(self.skipped),
             "warnings": list(self.warnings),
         }
 
@@ -73,8 +82,12 @@ class Plan:
     to_delete: list[str]
     order: list[str]
     # Why each recipe in `order` runs: "never-run", "changed", "outputs-changed",
-    # "views-missing", "upstream" (something it reads is made again) or "all".
+    # "views-missing", "input-data-changed" (a view it reads was made again with
+    # different data since it ran), "upstream" (something it reads is made
+    # again) or "all".
     reasons: dict[str, str] = field(default_factory=dict)
+    # For each "input-data-changed" recipe, the views it reads that changed.
+    stale_inputs: dict[str, list[str]] = field(default_factory=dict)
     refusals: list[RecipeRefused] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -150,6 +163,36 @@ def _run_order(loaded: dict[str, Recipe], wanted: set[str], recorded: set[str]) 
             del loaded[name]
 
 
+def _no_fingerprints_note(paths: list[str]) -> str:
+    shown = ", ".join(paths[:5]) + (f" and {len(paths) - 5} more" if len(paths) > 5 else "")
+    one = len(paths) == 1
+    return (
+        f"{shown} {'has' if one else 'have'} no fingerprint yet (recorded by an earlier version of "
+        f"useful-views), so check and sync cannot tell whether the views made from {'it' if one else 'them'} "
+        f"are out of date. Record {'it' if one else 'them'} with: useful-views sync --all"
+    )
+
+
+def _still_current(project: Path, recipe: Recipe) -> bool:
+    """Whether a recipe queued because a view it reads was to be made again
+    is up to date after all: every view it reads has, now, the fingerprint
+    its own views recorded reading, and its views are all on disk. Anything
+    unknown counts as not current, so the recipe runs."""
+    views, _ = split_resources(load_datapackage(project))
+    for out in recipe.outputs:
+        view = views.get(out)
+        if view is None or not (exists_exact(project, out) and (project / out).is_file()):
+            return False
+        read = view["producedBy"].get("inputFingerprints")
+        if read is None:
+            return False
+        for path in recipe.inputs:
+            if path.startswith(f"{VIEWS}/"):
+                if fingerprints_differ(read.get(path), views.get(path, {}).get("fingerprint")) is not False:
+                    return False  # changed, or unknown
+    return True
+
+
 def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
     """Work out what `sync` would do, and every refusal, without changing anything."""
     data = load_datapackage(project)
@@ -218,6 +261,7 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
             {o for o in gone if o not in declared_outputs and exists_exact(project, o) and (project / o).is_file()}
         )
         records = {r["name"]: r for r in kept}
+        changed_inputs = stale_inputs(data)
         reasons: dict[str, str] = {}
         for name, recipe in loaded.items():
             if rerun_all:
@@ -228,6 +272,10 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
                 reasons[name] = "never-run"
             elif records[name] != recipe.record():
                 reasons[name] = "changed"
+            elif name in changed_inputs:
+                # Before views-missing: it is known from the records alone, so
+                # cookbook --check sees it in CI, where no view is on disk.
+                reasons[name] = "input-data-changed"
             elif any(not exists_exact(project, o) or not (project / o).is_file() for o in recipe.outputs):
                 reasons[name] = "views-missing"
         order, cycle_refusals = _run_order(loaded, set(reasons), set(records))
@@ -235,6 +283,14 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
         for name in order:
             reasons.setdefault(name, "upstream")
         reasons = {name: reasons[name] for name in order}
+
+        # Views recorded before fingerprints: their readers cannot be judged until
+        # the recipes that make them run again (those that run in this sync will).
+        views_now, _ = split_resources(data)
+        missing = [p for p in unfingerprinted(data)
+                   if p not in gone and views_now[p]["producedBy"].get("recipe") not in reasons]
+        if missing:
+            notes.append(_no_fingerprints_note(missing))
 
         # Rules 4 to 8 for each recipe that will run, against the records as
         # they will be at that moment: earlier recipes in the order already
@@ -281,6 +337,7 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
     return Plan(
         data=data, loaded=loaded, removed=removed, dropped=dropped, kept=kept, gone=gone,
         to_delete=to_delete, order=order, reasons=reasons, refusals=list(unique.values()),
+        stale_inputs={n: changed_inputs[n] for n, why in reasons.items() if why == "input-data-changed"},
         warnings=list(dict.fromkeys(found + notes)),
     )
 
@@ -418,6 +475,7 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
         before = None
     write_generated(project, data)
     ran: list[str] = []
+    skipped: list[str] = []
     deleted: list[str] = []
     # Compared with the catalog of the file as it was read, as check does: a
     # catalog that only differs in the order sync now writes is not hand-edited.
@@ -434,6 +492,7 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
             ran=tuple(ran),
             warnings=tuple(dict.fromkeys(collected)),
             reasons={n: plan.reasons[n] for n in ran},
+            skipped=tuple(skipped),
         )
 
     deferred: list[Exception] = []
@@ -485,6 +544,13 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     known: dict = {}  # fingerprints taken during this sync, so a view made is not hashed again when read
     try:
         for name in plan.order:
+            # Queued only because a view it reads was to be made again: if that
+            # view came out the same, this recipe is still up to date.
+            if plan.reasons[name] == "upstream" and _still_current(project, plan.loaded[name]):
+                _write("stderr", f"useful-views: {RECIPES}/{name} is up to date: the views it reads came out "
+                                   "the same\n")
+                skipped.append(name)
+                continue
             current = name
             _write("stderr", f"useful-views: running {RECIPES}/{name}\n")
             caught: list = []

@@ -36,6 +36,15 @@ def chain(root: Path) -> None:
     uvs.sync(root=root)
 
 
+def change_a(root: Path) -> None:
+    """Change a's record and its data. sync then runs a, and b and c after it:
+    with the same data, they would be skipped as still up to date."""
+    write_recipe(root, "a", inputs=["raw/data.csv"], outputs=["useful-views/a.parquet"],
+                 description="Test recipe a, changed.", steps={"01_make.py": (
+                     "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
+                     "pq.write_table(pa.table({'id': [7, 8, 9]}), 'useful-views/a.parquet')\n")})
+
+
 # --- the project lock -----------------------------------------------------------
 
 
@@ -212,9 +221,11 @@ def test_sigterm_during_sync_says_what_was_done(project):
 
 def test_run_names_the_recipes_downstream_of_it(project):
     chain(project)
+    change_a(project)
     with pytest.warns(uvs.UsefulViewsWarning, match="recipes/b, recipes/c") as caught:
         result = uvs.run("a", root=project)
-    assert any("useful-views sync --all" in w for w in result.warnings)
+    # Their records show they read a's old data, so a plain sync finds them.
+    assert any(w.endswith("Bring them up to date with: useful-views sync") for w in result.warnings)
     assert len([w for w in caught if "made its views again" in str(w.message)]) == 1
 
 
@@ -232,10 +243,9 @@ def test_sync_does_not_warn_about_recipes_it_runs_itself(project):
 def test_a_sync_that_stops_removes_views_made_from_views_it_replaced(project):
     chain(project)
     # b's code now fails (its top comment, and so its record, is unchanged);
-    # a has changed, so sync runs a, then b and c downstream of it.
+    # a's record and data have changed, so sync runs a, then b and c, which read it.
     write(project, "recipes/b/01_make.py", "# Write a small table to each output.\nraise SystemExit('boom')\n")
-    write(project, "recipes/a/recipe.toml", (project / "recipes/a/recipe.toml").read_text().replace(
-        "Test recipe a.", "Test recipe a, changed."))
+    change_a(project)
     with pytest.raises(uvs.StepFailed) as err:
         uvs.sync(root=project)
     message = str(err.value)
@@ -409,8 +419,7 @@ def test_a_record_naming_a_folder_outside_work_is_refused_and_nothing_is_deleted
 
 def test_a_sync_interrupted_before_a_recipe_starts_still_removes_its_stale_views(project, monkeypatch):
     chain(project)
-    write(project, "recipes/a/recipe.toml", (project / "recipes/a/recipe.toml").read_text().replace(
-        "Test recipe a.", "Test recipe a, changed."))
+    change_a(project)
     real_run = syncing._run
 
     def run(project_, name, **kwargs):

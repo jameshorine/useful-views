@@ -53,8 +53,7 @@ def test_running_again_with_the_same_data_changes_nothing(project):
     chain(project)
     uvs.sync(root=project)
     before = (project / "datapackage.json").read_bytes()
-    with pytest.warns(uvs.UsefulViewsWarning, match="recipes/down"):
-        uvs.run("up", root=project)
+    assert uvs.run("up", root=project).warnings == ()  # the same data: down is still up to date
     uvs.run("down", root=project)
     assert (project / "datapackage.json").read_bytes() == before
 
@@ -129,10 +128,14 @@ def test_records_from_before_fingerprints_stay_valid(project):
     chain(project)
     uvs.sync(root=project)
     as_written_by_0_1_0(project)
-    assert uvs.check(root=project) == []
-    result = uvs.sync(root=project)
-    # Nothing runs, and the catalog in the old order is not taken for a hand edit.
-    assert result.ran == () and result.warnings == ()
+    with pytest.warns(uvs.UsefulViewsWarning, match="no fingerprint yet"):
+        assert uvs.check(root=project) == []  # a note, not a problem
+    with pytest.warns(uvs.UsefulViewsWarning, match="no fingerprint yet"):
+        result = uvs.sync(root=project)
+    # Nothing runs, and the catalog in the old order is not taken for a hand edit;
+    # the one note says how to record the missing fingerprints.
+    assert result.ran == () and len(result.warnings) == 1
+    assert "no fingerprint yet" in result.warnings[0] and "useful-views sync --all" in result.warnings[0]
     text = (project / "datapackage.json").read_text(encoding="utf-8")
     assert text == render_datapackage(json.loads(text))  # rewritten in the new layout, once
     assert all("fingerprint" not in v for v in views(project).values())  # nothing ran, so none yet

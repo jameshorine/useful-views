@@ -49,8 +49,10 @@ In `datapackage.json`, each view's entry has its `fingerprint` (a data hash
 of its contents, `datahash1:sha256:…`, or `null`) and, in
 `producedBy.inputFingerprints`, the fingerprints the views its recipe read had
 when it ran. Where one differs from that view's own `fingerprint` now, the
-view was made from an older version of it; `useful-views sync --all` makes
-everything again.
+view was made from an older version of it: `check` reports its recipe as
+`out-of-date` with reason `input-data-changed`, and `useful-views sync` runs
+it. A recipe queued only because a view it reads is made again is skipped
+when that view comes out the same (`skipped` in `sync --json`).
 
 Each step `NN_name.py` starts with a `#` comment saying what it does, runs
 from the project root, reads and writes files by the same path strings as in
@@ -90,8 +92,9 @@ from the project root, reads and writes files by the same path strings as in
 2. `sync` does not notice edits inside a step's code, a raw file replaced
    under the same name, or a `git pull` or branch switch (the views are not in
    git). After those, use `useful-views sync --all`.
-3. After `run <recipe>`, recipes that read its views are out of date; `run`
-   warns and names them. Use `sync` rather than `run` when in doubt.
+3. After `run <recipe>`, if its views came out different, recipes that read
+   them are out of date: `run` warns, `check` reports them and `sync` runs
+   them. Use `sync` rather than `run` when in doubt.
 4. Paths in `recipe.toml` are relative to the project root, use forward
    slashes, match letter case exactly, and are the same strings the steps use.
    No wildcards: list each file.

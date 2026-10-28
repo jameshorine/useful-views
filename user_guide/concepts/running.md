@@ -47,9 +47,12 @@ twice leaves `datapackage.json` and the catalog byte-for-byte unchanged.
 
 `run` never runs other recipes. If an input is another recipe's view, that
 recipe must have run first; `sync` handles the order for you. If other
-recipes read the views `run` just made again, it warns and names them: their
-views were made from the old ones, and `sync` does not notice that by itself.
-Run `useful-views sync --all`, or run each of them, upstream first.
+recipes read the views `run` just made again with different data, it warns
+and names them: their views were made from the old ones. Their records show
+it, so `check` reports them as out of date (`input-data-changed`) and
+`useful-views sync` runs them. If the data came out the same, they are
+still up to date, and `run` says nothing. (Records written before
+fingerprints cannot show it; `run` then says to use `useful-views sync --all`.)
 
 ## sync
 
@@ -74,12 +77,13 @@ are removed: the next `sync` sees them as missing and makes them again.
 On a fresh clone, place the raw files and run `useful-views sync`.
 
 `sync` does not notice a change inside a step's code, or a raw file replaced
-under the same name, since that needs hashing, which is planned for a
-future release. After such a change, use `useful-views sync --all` (or
-`run` that recipe and then each recipe downstream of it). The same goes
-after a `git pull`, merge or branch switch: the views are not in git, so
-they still come from the recipes as they were before. See
-[Stale views and fingerprints](stale-views.md).
+under the same name, until the recipe runs again: fingerprints of code and
+raw files are planned for a future release. After such a change, `run`
+that recipe and then `useful-views sync`, which runs the recipes downstream
+whose inputs came out different (or use `useful-views sync --all`). After a
+`git pull`, merge or branch switch, use `useful-views sync --all`: the views
+are not in git, so they still come from the recipes as they were before.
+See [Stale views and fingerprints](stale-views.md).
 
 ## One command at a time
 
@@ -108,7 +112,7 @@ missing; to gate such a job, use `useful-views cookbook --check` (see
 | When you... | Do this |
 |---|---|
 | add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync` |
-| edit the code inside a step | `useful-views sync --all` |
+| edit the code inside a step | `useful-views run` that recipe, then `useful-views sync` (or `useful-views sync --all`) |
 | replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`; then `sync` alone notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
 | delete a recipe folder, or remove an output | `useful-views sync`: it removes the old records and view files (first change the inputs of any recipe that reads those views) |

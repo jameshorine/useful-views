@@ -45,8 +45,10 @@ read files, and `cookbook`, which writes only `cookbook.json`.
 - After editing the code inside a step, after a `git pull` or a branch
   switch, or after replacing a raw file under the same name, `sync` alone
   does not notice: use `useful-views sync --all`.
-- After `run <recipe>`, the recipes that read its views are out of date; the
-  warning names them. Prefer `sync`.
+- After `run <recipe>`, if its views came out different, the recipes that
+  read them are out of date: `run` warns and names them, `check` reports
+  them (`out-of-date`, reason `input-data-changed`), and `sync` runs them.
+  Prefer `sync`.
 - Run one command at a time. A second `run`, `sync` or `cookbook` started
   while another is working on the same project is refused ("another
   useful-views command is already changing this project"); wait, then run
@@ -69,7 +71,7 @@ useful-views check --json
 
 useful-views sync --json
 # {"ok": true, "removed": [], "dropped": [], "deleted": [], "ran": ["a", "b"],
-#  "reasons": {"a": "changed", "b": "upstream"}, "warnings": []}
+#  "reasons": {"a": "changed", "b": "upstream"}, "skipped": [], "warnings": []}
 
 useful-views run pwt_panel --json
 # on failure:
