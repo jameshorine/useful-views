@@ -43,16 +43,26 @@ Before changing anything, `run` checks the recipe against the
 If a step fails or a view is missing, nothing is recorded, the recipe's views
 are removed, and its record from the last successful run, if any, is kept.
 The files in `work/<recipe>/` stay as the steps left them. Running a recipe
-twice leaves `datapackage.json` and the catalog byte-for-byte unchanged.
+twice leaves `datapackage.json` and the catalog byte-for-byte unchanged, as
+long as its steps give the same data each time. A step whose rows come out
+in a different order on each run (an unsorted `group_by`, some joins) gives
+its view a new fingerprint every run, so the recipes downstream of it look
+out of date: sort a view's rows by columns that together identify each row before writing it.
 
 `run` never runs other recipes. If an input is another recipe's view, that
 recipe must have run first; `sync` handles the order for you. If other
-recipes read the views `run` just made again with different data, it warns
-and names them: their views were made from the old ones. Their records show
-it, so `check` reports them as out of date (`input-data-changed`) and
-`useful-views sync` runs them. If the data came out the same, they are
-still up to date, and `run` says nothing. (Records written before
-fingerprints cannot show it; `run` then says to use `useful-views sync --all`.)
+recipes read the views `run` just made again, it warns and names them. When
+the data changed, their views were made from the old ones: their records
+show it, so `check` reports them as out of date (`input-data-changed`) and
+`useful-views sync` runs them. When the data came out the same, the records
+cannot show whether they are still up to date, as a step can see what a
+data hash leaves out, such as a time zone's name, a column's storage type
+or unit, or its categories. If what you changed is how the data is stored,
+run them too (`run` names the command), or use `useful-views sync --all`:
+`sync` alone does not run them, as their records match. When the records
+cannot show either (written before fingerprints, a view with no data hash,
+or a fingerprint this version does not understand), `run` says why, and to
+use `useful-views sync --all`.
 
 ## sync
 
@@ -65,22 +75,28 @@ an environment match its lock file. Records only ever come from real runs.
 2. It removes the records of recipes whose folder was deleted, and any view
    a recipe no longer lists, along with those view files.
 3. It runs, upstream first, every recipe that has never run, whose
-   `recipe.toml` or steps no longer match its record, or whose views are
-   missing, and everything downstream of those.
+   `recipe.toml` or steps no longer match its record, whose views are
+   missing, or that read a view since made again with different data
+   (`input-data-changed`), and then every recipe downstream of those, even
+   when the views they read come out with the same data hash: that does not
+   show they would give the same results.
 
-If a recipe fails, or sync is interrupted, it stops there. What ran before
-stays recorded, and the message says what sync had done, what it had not
-reached, and which command to run next. Recipes it had not reached that read
-views it had already made again would be left out of date, so their views
-are removed: the next `sync` sees them as missing and makes them again.
+Before it runs anything, `sync` removes the views of every recipe it will
+run after another one it reads from, since those are made again from new
+views. If a recipe fails, or sync is interrupted, it stops there. What ran
+before stays recorded, and the message says what sync had done, what it had
+not reached, and which command to run next. The views it had not yet made
+again are missing, however it stopped (even if the process was killed), so
+the next `sync` makes them.
 
 On a fresh clone, place the raw files and run `useful-views sync`.
 
 `sync` does not notice a change inside a step's code, or a raw file replaced
 under the same name, until the recipe runs again: fingerprints of code and
-raw files are planned for a future release. After such a change, `run`
-that recipe and then `useful-views sync`, which runs the recipes downstream
-whose inputs came out different (or use `useful-views sync --all`). After a
+raw files are planned for a future release. After changing a step's code,
+`run` that recipe, then what it says to run next. After replacing a raw
+file, `run` every recipe that reads it, then what each says; or, after
+either, use `useful-views sync --all`. After a
 `git pull`, merge or branch switch, use `useful-views sync --all`: the views
 are not in git, so they still come from the recipes as they were before.
 See [Stale views and fingerprints](stale-views.md).
@@ -112,8 +128,8 @@ missing; to gate such a job, use `useful-views cookbook --check` (see
 | When you... | Do this |
 |---|---|
 | add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync` |
-| edit the code inside a step | `useful-views run` that recipe, then `useful-views sync` (or `useful-views sync --all`) |
-| replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`; then `sync` alone notices) |
+| edit the code inside a step | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`) |
+| replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name, and change the path in `inputs` and in the step that reads it; then `sync` alone notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
 | delete a recipe folder, or remove an output | `useful-views sync`: it removes the old records and view files (first change the inputs of any recipe that reads those views) |
 | rename a recipe folder | change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync` |

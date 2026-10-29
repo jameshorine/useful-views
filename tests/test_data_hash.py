@@ -33,8 +33,9 @@ EXPECTED = {
     "readings-polars.parquet": "datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18",
     "readings-pyarrow.parquet": "datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18",
     "readings-pandas.parquet": "datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18",
-    "every-type-pyarrow.parquet": "datahash1:sha256:be2d9a2855e04310f28773dec7fe36e2b8c7132123dab5e857c7b5727f607599",
-    "empty-pyarrow.parquet": "datahash1:sha256:8e56d38baf9f412623d9c8977e6cd189eeda02d75c384e520aa772b2f6c43a51",
+    "every-type-pyarrow.parquet": "datahash1:sha256:c866a136d9d23368e90f8b4210bd2f63586a8cd1142f048356e227c92a4f4817",
+    "empty-pyarrow.parquet": "datahash1:sha256:7170a8822d57581c3d22fbac4ac610df67ae3a6404dd22910f9112135f2d82df",
+    "json-uuid-pyarrow.parquet": "datahash1:sha256:d165d177de794e6b515fbd9355da403ccebbb3f9d108bfee0461a53e38407e2f",
 }
 
 
@@ -67,7 +68,7 @@ def kind(t: pa.DataType) -> str:
     if pa.types.is_decimal(t):
         return f"decimal({t.precision},{t.scale})"
     if pa.types.is_timestamp(t):
-        return "timestamp" if t.tz is None else f"timestamp[{t.tz}]"
+        return "timestamp" if t.tz is None else "timestamp[UTC]"
     if pa.types.is_time(t):
         return "time"
     if pa.types.is_duration(t):
@@ -116,14 +117,29 @@ def encode(value, t: pa.DataType) -> bytes:
     return struct.pack("<qI", seconds, rest * (1_000_000_000 // PER_SECOND[t.unit]))
 
 
+# Columns the file labels JSON or UUID, whatever type a pyarrow version reads them as.
+LOGICAL_KINDS = {"JSON": "string", "UUID": "binary"}
+
+
 def reference_hash(path) -> str:
-    table = pq.ParquetFile(path).read()  # read_table refuses duplicate column names
+    parquet = pq.ParquetFile(path)
+    table = parquet.read()  # read_table refuses duplicate column names
     stream = b"datahash1\n" + struct.pack("<QQ", table.num_rows, table.num_columns)
-    for field, column in zip(table.schema, table.columns):
-        rows = b"".join(
-            b"\x00" if v is None else b"\x01" + encode(v, field.type) for v in plain_values(column, field.type)
-        )
-        stream += length_prefixed(field.name.encode("utf-8")) + length_prefixed(kind(field.type).encode("ascii"))
+    for i, (field, column) in enumerate(zip(table.schema, table.columns)):
+        labelled = None if pa.types.is_nested(field.type) else LOGICAL_KINDS.get(
+            parquet.schema.column(i).logical_type.type)
+        if labelled:  # text or bytes, read as binary, string or an extension type
+            if isinstance(field.type, pa.BaseExtensionType):
+                column = pa.chunked_array([c.storage for c in column.chunks], field.type.storage_type)
+            values = [v if v is None or isinstance(v, bytes) else v.encode("utf-8") for v in column.to_pylist()]
+            rows = b"".join(b"\x00" if v is None else b"\x01" + length_prefixed(v) for v in values)
+            name = labelled
+        else:
+            rows = b"".join(
+                b"\x00" if v is None else b"\x01" + encode(v, field.type) for v in plain_values(column, field.type)
+            )
+            name = kind(field.type)
+        stream += length_prefixed(field.name.encode("utf-8")) + length_prefixed(name.encode("ascii"))
         stream += hashlib.sha256(rows).digest()
     return "datahash1:sha256:" + hashlib.sha256(stream).hexdigest()
 
@@ -196,6 +212,20 @@ def write_vectors(folder: Path) -> None:
     readings.to_pandas().to_parquet(folder / "readings-pandas.parquet")
     pq.write_table(every_type(), folder / "every-type-pyarrow.parquet", row_group_size=3)
     pq.write_table(every_type().slice(0, 0), folder / "empty-pyarrow.parquet")
+    if hasattr(pa, "json_") and hasattr(pa, "uuid"):  # pyarrow 19 and later can write these types
+        pq.write_table(json_and_uuid(), folder / "json-uuid-pyarrow.parquet")
+
+
+def json_and_uuid() -> pa.Table:
+    """JSON and UUID columns: older pyarrow reads them as binary, newer as
+    extension types; the file labels them, so the hash is the same."""
+    import uuid
+
+    return pa.table({
+        "id": pa.array([1, 2, 3], pa.int64()),
+        "doc": pa.array(['{"a": 1}', None, "[]"], pa.json_()),
+        "key": pa.array([uuid.UUID(int=1).bytes, None, uuid.UUID(int=2**128 - 1).bytes], pa.uuid()),
+    })
 
 
 def hash_of(table: pa.Table, path: Path, **options) -> str:
@@ -215,7 +245,7 @@ def test_matches_the_rules_written_out_by_hand(tmp_path, options):
 def test_pinned_files_keep_their_hashes():
     """Files written once, by three libraries, give the same hashes on every
     pyarrow version: the hash depends on the data, not on the reader."""
-    assert sorted(p.name for p in VECTORS.iterdir()) == sorted(EXPECTED)
+    assert sorted(p.name for p in VECTORS.glob("*.parquet")) == sorted(EXPECTED)  # not .DS_Store and such
     for name, expected in EXPECTED.items():
         assert uvs.data_hash(VECTORS / name) == expected, name
         assert reference_hash(VECTORS / name) == expected, name
@@ -225,7 +255,8 @@ def test_libraries_installed_now_give_the_pinned_hashes(tmp_path):
     pytest.importorskip("pandas")
     write_vectors(tmp_path)
     for name, expected in EXPECTED.items():
-        assert uvs.data_hash(tmp_path / name) == expected, name
+        if (tmp_path / name).exists():  # an older pyarrow cannot write every one of them
+            assert uvs.data_hash(tmp_path / name) == expected, name
 
 
 def test_rules_page_shows_the_pinned_hash():
@@ -268,6 +299,9 @@ def test_storage_types_that_are_the_same_data(tmp_path):
     same(pa.array([1, None], pa.timestamp("s")), pa.array([1_000_000_000, None], pa.timestamp("ns")))
     same(pa.array([-1, None], pa.timestamp("ms", tz="UTC")), pa.array([-1000, None], pa.timestamp("us", tz="UTC")))
     same(pa.array([dt.date(2020, 1, 1)]), pa.array([dt.date(2020, 1, 1)], pa.date64()))
+    # The same instants, shown in another time zone, or with the zone's name not kept.
+    same(pa.array([1, None], pa.timestamp("s", tz="UTC")), pa.array([1, None], pa.timestamp("s", tz="Europe/Paris")))
+    same(pa.array([1], pa.timestamp("ms", tz="UTC")), pa.array([1], pa.timestamp("ms", tz="+00:00")))
     same(pa.array([1, None], pa.time32("s")), pa.array([1_000_000, None], pa.time64("us")))
     same(pa.array([1, None], pa.duration("s")), pa.array([1_000_000_000, None], pa.duration("ns")))
     same(pa.array([decimal.Decimal("1.50")], pa.decimal128(5, 2)), pa.array([decimal.Decimal("1.50")], pa.decimal256(5, 2)))
@@ -312,7 +346,6 @@ def test_changes_that_count(tmp_path, a, b):
     (pa.array([1], pa.int64()), pa.array([1], pa.uint64())),
     (pa.array([1.5], pa.float32()), pa.array([1.5], pa.float64())),
     (pa.array([1], pa.timestamp("s")), pa.array([1], pa.timestamp("s", tz="UTC"))),
-    (pa.array([1], pa.timestamp("s", tz="UTC")), pa.array([1], pa.timestamp("s", tz="Europe/Paris"))),
     (pa.array([decimal.Decimal("1.50")], pa.decimal128(5, 2)), pa.array([decimal.Decimal("1.500")], pa.decimal128(5, 3))),
     (pa.array(["a"]), pa.array([b"a"])),
     (pa.array([None], pa.int64()), pa.nulls(1)),
@@ -376,11 +409,15 @@ def test_one_batch_of_one_column_in_memory_at_a_time(tmp_path, monkeypatch):
     assert events == [("read", 2), ("hash", 2), ("read", 1), ("hash", 1)] * 3
 
 
-def test_batches_stay_within_one_row_group(tmp_path, monkeypatch):
-    """Batches over the whole file would load a column's compressed bytes for
-    every row group at once; one row group at a time keeps memory level."""
+def test_row_groups_are_read_in_bundles_of_batch_rows(tmp_path, monkeypatch):
+    """Small row groups are read together, up to BATCH_ROWS rows (each read has
+    a fixed cost); batches never span the whole file, which would load a
+    column's compressed bytes for every row group at once."""
+    from useful_views import fingerprints
+
+    monkeypatch.setattr(fingerprints, "BATCH_ROWS", 2)
     path = tmp_path / "t.parquet"
-    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}), path, row_group_size=2)
+    pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}), path, row_group_size=1)
     asked = []
     iter_batches = pq.ParquetFile.iter_batches
 
@@ -390,7 +427,7 @@ def test_batches_stay_within_one_row_group(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
     assert uvs.data_hash(path) == reference_hash(path)
-    assert asked == [(["a"], [0]), (["a"], [1]), (["b"], [0]), (["b"], [1])]
+    assert asked == [(["a"], [0, 1]), (["a"], [2]), (["b"], [0, 1]), (["b"], [2])]
 
 
 def test_batches_with_duplicate_column_names(tmp_path, monkeypatch):
@@ -430,6 +467,66 @@ def test_nested_columns_have_no_data_hash(tmp_path, column):
         uvs.data_hash(path)
     assert caught.value.column == "nested"
     assert caught.value.to_dict()["path"] == str(path)
+
+
+@pytest.mark.parametrize("t", [pa.decimal128(38, 38), pa.decimal128(38, 20), pa.decimal128(30, 25),
+                               pa.decimal128(19, 0), pa.decimal256(76, 76)])
+def test_decimals_of_any_scale(tmp_path, t):
+    d = decimal.Decimal
+    tiny = d(1).scaleb(-t.scale)
+    path = tmp_path / "t.parquet"
+    pq.write_table(pa.table({"x": pa.array([-tiny, None, tiny, d(0)], t)}), path)
+    assert uvs.data_hash(path) == reference_hash(path)
+
+
+class _Money(pa.ExtensionType):
+    def __init__(self):
+        super().__init__(pa.int64(), "test.money")
+
+    def __arrow_ext_serialize__(self):
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        return cls()
+
+
+def test_extension_types_have_no_data_hash_whether_known_or_not(tmp_path):
+    """The file says the column is an extension type, so the answer is the same
+    whether or not the program reading it has that type registered."""
+    path = tmp_path / "t.parquet"
+    storage = pa.array([1, 2], pa.int64())
+    pq.write_table(pa.table({"flat": [1, 2], "money": pa.ExtensionArray.from_storage(_Money(), storage)}), path)
+    with pytest.raises(uvs.DataHashError, match="extension type test.money") as unknown:
+        uvs.data_hash(path)
+    pa.register_extension_type(_Money())
+    try:
+        with pytest.raises(uvs.DataHashError, match="extension type test.money") as known:
+            uvs.data_hash(path)
+    finally:
+        pa.unregister_extension_type("test.money")
+    assert unknown.value.column == known.value.column == "money"
+
+
+def test_odd_paths_give_a_data_hash_error(tmp_path):
+    for path, message in (("", "empty path"), ("a\x00b.parquet", "not a valid path")):
+        with pytest.raises(uvs.DataHashError, match=message):
+            uvs.data_hash(path)
+
+
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="needs POSIX permissions, not as root")
+def test_an_unreadable_file_is_named_as_given(tmp_path, monkeypatch):
+    from useful_views.fingerprints import hash_file
+
+    path = tmp_path / "t.parquet"
+    pq.write_table(pa.table({"x": [1]}), path)
+    path.chmod(0)
+    try:
+        with pytest.raises(uvs.DataHashError) as caught:
+            hash_file(path, "useful-views/t.parquet")
+    finally:
+        path.chmod(0o644)
+    assert str(caught.value) == "useful-views/t.parquet could not be opened: Permission denied."
 
 
 def test_a_file_that_is_not_parquet(tmp_path):
@@ -506,3 +603,26 @@ def test_benchmark_memory_check():
     growing = results(262.0)
     growing["sizes"][2]["hash_peak_mb"] = 400.0  # 254 MB at a million rows, 400 MB at ten million
     assert benchmark.memory_check(growing).startswith("WARNING")
+
+
+def test_errors_survive_a_trip_to_another_process():
+    """data_hash in a process pool: an error raised there must arrive whole,
+    or the pool hangs or breaks."""
+    import pickle
+
+    from useful_views.cookbooks import CookbookError
+    from useful_views.examples import ExampleError
+
+    refused = uvs.RecipeRefused("refused", rule=5, path="recipes/a/recipe.toml", recipe="a")  # refusals: [itself]
+    errors = [
+        uvs.DataHashError("no hash", path="useful-views/v.parquet", column="tags"),
+        uvs.StepFailed("failed", step="recipes/a/01_make.py", returncode=1, stderr="boom", recipe="a"),
+        uvs.OutputError("bad", paths=["useful-views/v.parquet"], problems=[("useful-views/v.parquet", "is empty")]),
+        uvs.ProjectError("locked", recipe="a"), uvs.ProjectNotFound("none"), refused,
+        CookbookError("stale", findings=[]), ExampleError("offline", kind="network"),
+    ]
+    for error in errors:
+        back = pickle.loads(pickle.dumps(error))
+        assert type(back) is type(error) and str(back) == str(error) and back.to_dict() == error.to_dict()
+    back = pickle.loads(pickle.dumps(refused))
+    assert back.refusals[0] is back

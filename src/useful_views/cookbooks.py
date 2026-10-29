@@ -152,13 +152,16 @@ def cookbook(*, root: str | Path | None = None, check: bool = False) -> Cookbook
     with its description, inputs, outputs and steps, and the raw inputs the
     recipes read. It is generated from the record in `datapackage.json`, so
     to write it the project must be in sync: if `check` finds anything other
-    than stray files or a stale catalog or cookbook, nothing is written. Writing an unchanged cookbook
-    leaves the file untouched. Commit it to git, like a lock file.
+    than stray files or a stale catalog or cookbook, nothing is written.
+    Writing an unchanged cookbook leaves the file untouched. Commit it to
+    git, like a lock file.
 
     `check=True` needs no data: it works on a fresh clone or in CI, where
     raw/ and the views are not present. It compares `cookbook.json` with the
     committed `datapackage.json`, and also reports recipes whose folder no
-    longer matches their record (edited, added or removed without a sync).
+    longer matches their record (edited, added or removed without a sync),
+    and recipes made from an older version of a view they read
+    (`input-data-changed`).
 
     Args:
         root: The project folder. By default it is found by walking up from

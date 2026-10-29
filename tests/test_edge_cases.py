@@ -268,6 +268,17 @@ def test_an_input_written_with_other_capitals_says_so(project):
 from useful_views.paths import resource_name, slug  # noqa: E402
 
 
+def test_an_output_moved_to_another_recipe_is_not_said_to_be_deleted(project):
+    raw = add_raw_csv(project)
+    write_recipe(project, "a", inputs=[raw], outputs=[VIEW, "useful-views/shared.parquet"])
+    uvs.sync(root=project)
+    write_recipe(project, "a", inputs=[raw], outputs=[VIEW])
+    write_recipe(project, "b", inputs=[raw], outputs=["useful-views/shared.parquet"])
+    dropped = next(f for f in uvs.check(root=project) if f.reason == "outputs-dropped")
+    assert "useful-views/shared.parquet is now made by recipes/b" in dropped.message
+    assert "deletes" not in dropped.message
+
+
 def test_dropping_one_of_several_outputs_is_reported_and_blocks_cookbook_check(project):
     raw = add_raw_csv(project)
     write_recipe(project, "a", inputs=[raw], outputs=[VIEW, "useful-views/extra.parquet"])

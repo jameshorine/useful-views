@@ -23,10 +23,16 @@ it describes files in both `raw/` and `useful-views/`.
 - `resources` lists every raw file a recorded recipe read, then every view,
   each with its columns and their types. A view also has its `fingerprint`
   and `producedBy`: the recipe that made it, that recipe's inputs, and the
-  fingerprints those inputs had when it ran (see
+  fingerprints the views among those inputs had when it ran (see
   [Fingerprints](#fingerprints) below).
 - `recipes` lists each recorded recipe with its description, inputs,
   outputs and steps, as they were at its last successful run.
+
+A field this version does not write, perhaps from a newer useful-views, is
+never an error and never makes a recipe out of date. It is kept when the
+file is rewritten, except in the entries a run writes afresh, those of the
+recipe that ran, its views and the raw files it read: they describe the new
+run.
 
 Recipes, and the views under them, are listed in the order they run, so the
 file reads in the order the data is made. Each view starts with what it is
@@ -73,8 +79,9 @@ recorded files may not share one ([rule 8](../reference/rules.md)).
 
 ## Fingerprints
 
-When a recipe runs, useful-views takes two kinds of fingerprint, both
-[data hashes](../reference/data-hash.md) of a view's contents:
+*New in version 0.2.0.* When a recipe runs, useful-views takes fingerprints
+at two moments, both [data hashes](../reference/data-hash.md) of a view's
+contents:
 
 - just before the steps run, the fingerprint of each view the recipe reads,
   recorded in `producedBy.inputFingerprints`;
@@ -114,10 +121,20 @@ pwt-panel's fingerprint changes, say to `7a2e`, while gdp-per-capita still
 records `bdc1`: it was made from the old pwt-panel.
 
 A view whose columns the data hash does not cover yet (a list, struct or map
-in each cell) has the fingerprint `null`. Records written before
+in each cell, or a column the file labels GEOMETRY or GEOGRAPHY) has the
+fingerprint `null`. Records written before
 fingerprints, by useful-views 0.1, have none; they stay valid, and each view
 gets its fingerprint the next time its recipe runs (`useful-views sync
---all` runs them all).
+--all` runs them all). A fingerprint this version does not understand,
+perhaps written by a newer useful-views, is treated like a missing one. In
+each of these cases `check` and `sync` cannot tell whether the recipes that
+read the view are up to date, and say so in a note.
+
+Taking fingerprints means reading each view a recipe makes or reads once
+more (and, for `run`, the file a view replaces, when other recipes read
+it): about 22 million values a second on a laptop, so a few seconds for
+most views, and about 2 minutes for a 15 GB one (see
+[Speed](../reference/data-hash.md#speed)).
 
 ## useful-views/README.md
 
@@ -139,8 +156,9 @@ The record says which recipe made each view, from which inputs, with which
 steps, and the fingerprints of the views involved. `check` and `sync`
 compare those fingerprints with each other, so they report a view made
 from an older version of another (`input-data-changed`). The record does
-not yet hold fingerprints of raw files or of steps' code, and nothing yet
-compares a view's file on disk with its record, as is needed after a
-`git pull`. See
+not yet hold fingerprints of raw files or of steps' code, and a view's
+file on disk is compared with its record only when a recipe is about to
+read it (`check` never looks), so a `git pull` still calls for
+`useful-views sync --all`. See
 [Stale views and fingerprints](stale-views.md) for what that means, what to
 do today, and what is planned.

@@ -18,11 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0 # Full history for accurate page timestamps
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -37,7 +38,7 @@ jobs:
           git diff --exit-code user_guide/reference
 
       - name: Set up Quarto
-        uses: quarto-dev/quarto-actions/setup@v2
+        uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b  # v2
 
       - name: Build docs
         run: uv run --group docs great-docs build
@@ -62,6 +63,7 @@ jobs:
   publish-docs:
     name: "Publish Docs"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: "build-docs"
     if: github.ref == 'refs/heads/main'
     # One deployment at a time; a newer one waits instead of cancelling.
@@ -75,7 +77,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: docs-html
           path: great-docs/_site
@@ -93,6 +95,7 @@ jobs:
   preview-docs:
     name: "Preview Docs"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: "build-docs"
     if: github.event_name == 'pull_request'
     permissions:
@@ -105,6 +108,6 @@ jobs:
       # token. continue-on-error so fork PRs (read-only token) don't fail the run.
       - name: Post preview instructions to the PR
         continue-on-error: true
-        run: pipx run great-docs ci pr-comment --run ${{ github.run_id }} --pr ${{ github.event.number }}
+        run: pipx run --spec 'great-docs==0.17.0' great-docs ci pr-comment --run ${{ github.run_id }} --pr ${{ github.event.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

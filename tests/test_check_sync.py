@@ -605,16 +605,14 @@ def test_sync_reruns_a_changed_recipe_and_everything_downstream(driver, project)
     assert next(r for r in load(project)["recipes"] if r["name"] == "up")["description"] == "Changed."
 
 
-def test_sync_skips_downstream_when_a_changed_recipe_makes_the_same_data(project):
+def test_sync_runs_downstream_even_when_a_changed_recipe_makes_the_same_data(project):
     chain_project(project)
     uvs.sync(root=project)
     write(project, "recipes/up/recipe.toml",
           'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
-    before = (project / "useful-views" / "down.parquet").stat().st_mtime_ns
     result = uvs.sync(root=project)
-    # up ran again and made the same data, so down, which reads it, is still up to date.
-    assert result.ran == ("up",) and result.skipped == ("down",)
-    assert (project / "useful-views" / "down.parquet").stat().st_mtime_ns == before
+    # up made the same data, but a step can see what a data hash leaves out, so down runs too.
+    assert result.ran == ("up", "down") and result.reasons == {"up": "changed", "down": "upstream"}
     assert uvs.check(root=project) == []
 
 
@@ -772,8 +770,10 @@ def test_an_invalid_recorded_name_is_replaced_from_the_folder(tmp_path, project)
     data = load(project)
     data["name"] = "Not A Valid Name"
     (project / "datapackage.json").write_text(json.dumps(data), encoding="utf-8")
-    uvs.sync(root=project, all=True)
+    result = uvs.sync(root=project, all=True)
     assert load(project)["name"] == "proj"
+    # The name changed, so sync does not say that only the layout did.
+    assert not any("layout" in w for w in result.warnings)
 
 
 def test_sync_output_validates_with_frictionless(project):
@@ -826,8 +826,7 @@ def test_rename_recipe_folder_then_sync(driver, project):
     # and runs the renamed recipe and everything downstream of it.
     out = driver.sync()
     assert out.ok, out.message
-    # panel makes the same view, with the same data, so gdp_per_capita is still up to date.
-    assert ran(driver, out) == ["panel"]
+    assert ran(driver, out) == ["panel", "gdp_per_capita"]
     data = load(project)
     assert [r["name"] for r in data["recipes"]] == ["panel", "gdp_per_capita"]  # in run order
     view = next(r for r in data["resources"] if r["path"] == "useful-views/pwt-panel.parquet")

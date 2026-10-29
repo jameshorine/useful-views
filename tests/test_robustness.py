@@ -37,8 +37,7 @@ def chain(root: Path) -> None:
 
 
 def change_a(root: Path) -> None:
-    """Change a's record and its data. sync then runs a, and b and c after it:
-    with the same data, they would be skipped as still up to date."""
+    """Change a's record and its data. sync then runs a, and b and c after it."""
     write_recipe(root, "a", inputs=["raw/data.csv"], outputs=["useful-views/a.parquet"],
                  description="Test recipe a, changed.", steps={"01_make.py": (
                      "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
@@ -225,7 +224,7 @@ def test_run_names_the_recipes_downstream_of_it(project):
     with pytest.warns(uvs.UsefulViewsWarning, match="recipes/b, recipes/c") as caught:
         result = uvs.run("a", root=project)
     # Their records show they read a's old data, so a plain sync finds them.
-    assert any(w.endswith("Bring them up to date with: useful-views sync") for w in result.warnings)
+    assert any("Bring them up to date with: useful-views sync." in w for w in result.warnings)
     assert len([w for w in caught if "made its views again" in str(w.message)]) == 1
 
 
@@ -250,7 +249,7 @@ def test_a_sync_that_stops_removes_views_made_from_views_it_replaced(project):
         uvs.sync(root=project)
     message = str(err.value)
     assert "sync stopped at recipes/b" in message and "It had not yet run: recipes/c" in message
-    assert "The views of recipes/c were made from views this sync had already made again" in message
+    assert "The views of recipes/b, recipes/c were removed before anything ran" in message
     assert message.rstrip().endswith("Fix the problem above, then run: useful-views sync")
     assert "then run: useful-views run" not in message  # inside sync, sync gives the next command
     assert err.value.sync_result.ran == ("a",)
@@ -488,6 +487,24 @@ def test_sync_deletes_a_removed_recipes_read_only_work_folder(project):
     sh.rmtree(project / "recipes" / "a")
     result = uvs.sync(root=project)
     assert "work/a/" in result.deleted and not (project / "work" / "a").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_deleting_a_read_only_work_folder_never_changes_what_a_symlink_points_to(project, tmp_path):
+    import stat
+
+    from useful_views.runner import rmtree
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not the project's")
+    outside.chmod(0o600)
+    locked = project / "work" / "a" / "sub"
+    locked.mkdir(parents=True)
+    (locked / "link").symlink_to(outside)
+    locked.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    rmtree(project / "work" / "a")
+    assert not (project / "work" / "a").exists()
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o600 and outside.read_text() == "not the project's"
 
 
 VIEW_A = "useful-views/a.parquet"

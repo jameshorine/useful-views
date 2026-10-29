@@ -17,7 +17,8 @@ From Python: `uvs.cookbook()` and `uvs.cookbook(check=True)`.
 ## Why keep one
 
 The record in `datapackage.json` is written for tools: every file, its
-columns and types, recipes in name order. The cookbook is written for
+columns and types, and each view's fingerprint, so it changes whenever a
+view's data changes. The cookbook is written for
 people and reviewers: one file that reads top to bottom as the method of the
 project, upstream first, and that changes in git when a recipe's
 `recipe.toml`, its list of steps or a step's top comment changes (not when
@@ -67,11 +68,11 @@ with 1, and lists why, when:
   comment changed, or an output dropped, and committed without running
   `sync`;
 - a recipe's record shows it read a view whose data has changed since
-  (`out-of-date`, reason `input-data-changed`): someone ran the recipe
-  upstream of it with `useful-views run` and committed without running
-  `sync`. If that data should not have changed, make sure the upstream
-  recipe sorts its rows: the same rows in another order have another
-  fingerprint;
+  (`out-of-date`, reason `input-data-changed`): a recipe upstream of it ran
+  again (with `useful-views run`, or in a sync that stopped) and the result
+  was committed without running `sync`. If that data should not have
+  changed, make sure the upstream recipe sorts its rows by columns that together identify each row: the same rows
+  in another order have another fingerprint;
 - a recipe breaks a rule (`refused`), or a folder in `recipes/` has no
   readable `recipe.toml` (`unreadable-recipe`). `sync` does not fix these:
   fix what is listed first.
@@ -97,7 +98,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install useful-views==0.1.0   # the version your project uses
+      - run: pip install useful-views==0.2.0   # the version your project uses
       - run: useful-views cookbook --check
 ```
 
@@ -111,8 +112,10 @@ libraries. Pin useful-views to the version in your environment file:
 write, so an unpinned job could fail on an unchanged project when a new
 release changes the format.
 
-With `--json`, `ok` is the answer. `findings` lists the recipe folders that
-no longer match their records, as the same objects `check` gives; it is
+With `--json`, `ok` is the answer. `findings` lists what is out of step,
+recipe folders that no longer match their records and recipes made from an
+older version of a view they read (`input-data-changed`), as the same
+objects `check` gives; it is
 empty when the only problem is that `cookbook.json` is missing or differs,
 so test `ok`, not `findings`. When `useful-views cookbook` (without
 `--check`) refuses to write, it exits with 3, and its findings are in
@@ -178,10 +181,12 @@ so test `ok`, not `findings`. When `useful-views cookbook` (without
 
 ## What is next
 
-Version 1 says which recipes and steps made the views. It does not yet
-record checksums, so it cannot tell that a raw file, a step's code or a view
-changed since. Later versions are planned to add the SHA-256 of every raw
-input, recipe file, step and view, and then the environment the steps ran
-in, so that `cookbook --check` can tell when anything changed, the way
+Version 1 says which recipes and steps made the views, and holds no
+fingerprints itself. `cookbook --check` does read the views' fingerprints
+in `datapackage.json`, so it fails when a view was made from an older
+version of another (`input-data-changed`). It cannot yet tell that a raw
+file or a step's code changed. Later versions are planned to add
+fingerprints of every raw input, recipe file and step, and then the
+environment the steps ran in, so that `cookbook --check` can tell when anything changed, the way
 `uv.lock` locks a Python environment. See
 [Stale views and fingerprints](stale-views.md).

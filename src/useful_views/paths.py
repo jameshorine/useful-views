@@ -100,6 +100,10 @@ def q(text: str) -> str:
 
 DRIVE = re.compile(r"^[A-Za-z]:")
 CONTROL = re.compile(r"[\x00-\x1f]")
+# Characters that change how a path prints without being seen: control
+# characters (C0, DEL, C1), text-direction marks and overrides, and line and
+# paragraph separators. No path may hold one, in recipe.toml or in a record.
+UNSEEN = "\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069"
 
 
 def canonical(rel: str, root: Path | None = None) -> str | None:
@@ -141,6 +145,12 @@ def path_problem(rel: object, root: Path | None = None, example: str = "raw/data
             f"{rel!r} contains a control character, usually because a backslash was read as an escape "
             "(in recipe.toml, \\n means a new line). Write paths with forward slashes, "
             f"like {q(example)}"
+        )
+    unseen = re.search(f"[{UNSEEN}]", rel)
+    if unseen:
+        return (
+            f"{rel!r} contains an invisible character (U+{ord(unseen.group()):04X}) that changes how it prints; "
+            f"retype the path, like {q(example)}"
         )
     if rel.endswith(("/", "\\")):
         return f"{q(rel)} ends with a slash, but a path must name a file, like {q(example)}"

@@ -74,7 +74,7 @@ endings are fine). A file in another encoding is refused, even with a coding
 line that declares it.
 
 Changing a step's description is a change `sync` notices: it runs the recipe
-again, and everything downstream of it.
+again, and every recipe downstream of it.
 
 ## How a step runs
 
@@ -127,7 +127,8 @@ project then fails for anyone without that setting.) Code several recipes
 share belongs in a small package installed into the environment.
 
 Editing a helper module is like editing a step's code: `sync` does not
-notice it, so use `useful-views sync --all`.
+notice it until a recipe that uses it runs. Run each recipe that imports
+it, then what each run says to run next; or use `useful-views sync --all`.
 
 ## When a step fails
 
@@ -173,7 +174,8 @@ instead.
 A step run by hand writes its files but records nothing, and `sync` and
 `check` do not notice it: they report everything in sync while
 `datapackage.json` and the catalog still describe the views from the last
-recorded run. Afterwards, run `useful-views run <recipe>` and then
-`useful-views sync`, or `useful-views sync --all`.
+recorded run. (Only when a recipe is about to read such a view do `run` and
+`sync` see that it is not the recorded one, and refuse.) Afterwards, run `useful-views run <recipe>` and then what it says to
+run next, or `useful-views sync --all`.
 
 Rules 2 and 3 are about steps; [Rules](../reference/rules.md) lists them all.
