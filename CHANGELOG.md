@@ -4,7 +4,7 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
-## 0.2.0 (2026-10-29)
+## 0.2.0 (2026-10-30)
 
 Fingerprints: useful-views now records what each view contains, and uses it
 to find views made from older data.

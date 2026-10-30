@@ -10,7 +10,7 @@ authors:
   - family-names: Horine
     given-names: James
 version: 0.2.0
-date-released: 2026-10-29
+date-released: 2026-10-30
 license: MIT
 repository-code: "https://github.com/jameshorine/useful-views"
 url: "https://jameshorine.github.io/useful-views/"
