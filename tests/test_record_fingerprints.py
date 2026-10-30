@@ -185,7 +185,7 @@ def test_sync_all_does_not_say_to_run_sync_all_for_fingerprints_it_records_again
     uvs.sync(root=project)
     data = json.loads((project / "datapackage.json").read_text(encoding="utf-8"))
     next(r for r in data["resources"] if r["path"] == DOWN)["fingerprint"] = "datahash9:abc"
-    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8")
+    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8", newline="\n")
     result = uvs.sync(root=project, all=True)  # every entry is recorded again: nothing to say
     assert result.ran == ("up", "down") and result.warnings == ()
 
@@ -290,7 +290,7 @@ def test_fields_from_a_newer_version_are_kept_and_never_a_change(project):
     _recipe(data)["environment"] = "env9:abc"
     _recipe(data)["steps"][0]["codeFingerprint"] = "code9:abc"
     _view(data)["fileHash"] = "sha256:abc"
-    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8")
+    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8", newline="\n")
     uvs.cookbook(root=project)
     before = (project / "datapackage.json").read_bytes()
 

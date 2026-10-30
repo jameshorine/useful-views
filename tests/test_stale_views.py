@@ -522,7 +522,7 @@ def test_no_note_for_a_fingerprint_in_the_record_of_a_renamed_recipe(project):
     uvs.sync(root=project)
     data = json.loads((project / "datapackage.json").read_text(encoding="utf-8"))
     next(r for r in data["resources"] if r["path"] == UP)["fingerprint"] = "datahash9:abc"
-    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8")
+    (project / "datapackage.json").write_text(render_datapackage(data), encoding="utf-8", newline="\n")
     os.rename(project / "recipes" / "up", project / "recipes" / "up2")
     result = uvs.sync(root=project)
     assert result.ran == ("up2", "down")
