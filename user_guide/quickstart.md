@@ -247,14 +247,14 @@ places the raw files as your `README.md` describes, then runs
 
 | When you... | Do this |
 |---|---|
-| add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync`: it runs that recipe and everything downstream of it |
-| edit the code inside a step | `useful-views sync --all`, or `run` that recipe and then each recipe downstream of it. (`sync` alone does not notice code changes yet.) |
-| replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name and update `inputs`, which `sync` notices) |
+| add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync`: it runs that recipe, then every recipe downstream of it |
+| edit the code inside a step | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`). `sync` alone does not notice code changes yet. |
+| replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name, and change the path in `inputs` and in the step that reads it; `sync` notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all`: the views are not in git, so they still come from the recipes as they were |
 | delete a recipe folder, or remove an output from a recipe | `useful-views sync`: it removes the old records and view files (first change the inputs of any recipe that reads those views) |
 | rename a recipe folder | change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync` |
 | clone the project on another computer | install the libraries, place the raw files, then `useful-views sync` |
-| want to know if anything is missing or broken | `useful-views check`. It notices edited `recipe.toml` files, added or removed steps and changed top comments, but not edits to a step's code or to a file's contents. |
+| want to know if anything is missing or broken | `useful-views check`. It notices edited `recipe.toml` files, added or removed steps, changed top comments, and a view made from an older version of another; not edits to a step's code or to a raw file until the recipe runs, nor old views left by a `git pull`. |
 
 ## When something is refused
 

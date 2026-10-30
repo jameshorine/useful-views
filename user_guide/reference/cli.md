@@ -99,7 +99,7 @@ usage: useful-views run [-h] [-C PATH] [--json] recipe
 
 ## `useful-views check`
 
-Report what is missing or out of place, every rule a recipe breaks (refused), and recipes that sync would run. Changes nothing. Does not notice changes inside a step's code.
+Report what is missing or out of place, every rule a recipe breaks (refused), and recipes that sync would run. Changes nothing. Does not notice changes inside a step's code or to a raw file until that recipe runs again, nor view files on disk that no longer match their record (as after a git pull): then use useful-views sync --all.
 
 ```text
 usage: useful-views check [-h] [-C PATH] [--json]
@@ -113,7 +113,7 @@ usage: useful-views check [-h] [-C PATH] [--json]
 
 ## `useful-views sync`
 
-Make the views and datapackage.json match the recipe folders, like uv sync. Checks every recipe first and changes nothing if any would be refused. Then removes the records and view files of deleted recipes and outputs, and runs, upstream first, every recipe that is new, changed or missing its views, plus everything downstream of those.
+Make the views and datapackage.json match the recipe folders, like uv sync. Checks every recipe first and changes nothing if any would be refused. Then removes the records and view files of deleted recipes and outputs, and runs, upstream first, every recipe that is new, changed, missing its views or made from older data, then those downstream of them.
 
 ```text
 usage: useful-views sync [-h] [-C PATH] [--json] [--all]
@@ -139,7 +139,7 @@ usage: useful-views cookbook [-h] [-C PATH] [--json] [--check]
 | `-h`, `--help` | show this help message and exit |
 | `-C` `PATH`, `--project` `PATH` | run as if started in PATH (like git -C), for example a project folder |
 | `--json` | print the result as JSON on standard output; other output goes to standard error |
-| `--check` | do not write; exit 1 if cookbook.json is missing or out of date, or a recipe changed without a sync. Needs no data, so it works in CI |
+| `--check` | do not write; exit 1 if cookbook.json is missing or out of date, or a recipe changed, or was made from an older view, without a sync. Needs no data, so it works in CI |
 
 ## `useful-views rules`
 

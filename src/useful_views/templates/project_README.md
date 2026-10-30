@@ -102,7 +102,7 @@ run that recipe first. `sync` works on the whole project, like `uv sync`.
 | When you... | Do this |
 |---|---|
 | add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync` |
-| edit the code inside a step | `useful-views sync --all` (or `run` that recipe, then each recipe downstream of it) |
+| edit the code inside a step | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`) |
 | replace a file in `raw/` under the same name | `useful-views sync --all` |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
 | clone this project on another computer | place the raw files, then `useful-views sync` |

@@ -565,7 +565,7 @@ def test_sync_runs_never_run_recipes_upstream_first(driver, project):
     out = driver.sync()
     assert out.ok, out.message
     assert ran(driver, out) == ["up", "down"]
-    assert record_names(project) == ["down", "up"]
+    assert record_names(project) == ["up", "down"]  # recorded in run order too
     assert_clean(driver, project)
 
 
@@ -597,9 +597,23 @@ def test_sync_reruns_a_changed_recipe_and_everything_downstream(driver, project)
     uvs.sync(root=project)
     write(project, "recipes/up/recipe.toml",
           'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
+    write(project, "recipes/up/01_make.py",  # and its data changes too
+          "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
+          "pq.write_table(pa.table({'id': [7, 8, 9]}), 'useful-views/up.parquet')\n")
     out = driver.sync()
     assert out.ok and ran(driver, out) == ["up", "down"]
     assert next(r for r in load(project)["recipes"] if r["name"] == "up")["description"] == "Changed."
+
+
+def test_sync_runs_downstream_even_when_a_changed_recipe_makes_the_same_data(project):
+    chain_project(project)
+    uvs.sync(root=project)
+    write(project, "recipes/up/recipe.toml",
+          'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
+    result = uvs.sync(root=project)
+    # up made the same data, but a step can see what a data hash leaves out, so down runs too.
+    assert result.ran == ("up", "down") and result.reasons == {"up": "changed", "down": "upstream"}
+    assert uvs.check(root=project) == []
 
 
 def test_sync_does_not_rerun_upstream_when_only_downstream_changed(driver, project):
@@ -756,8 +770,10 @@ def test_an_invalid_recorded_name_is_replaced_from_the_folder(tmp_path, project)
     data = load(project)
     data["name"] = "Not A Valid Name"
     (project / "datapackage.json").write_text(json.dumps(data), encoding="utf-8")
-    uvs.sync(root=project, all=True)
+    result = uvs.sync(root=project, all=True)
     assert load(project)["name"] == "proj"
+    # The name changed, so sync does not say that only the layout did.
+    assert not any("layout" in w for w in result.warnings)
 
 
 def test_sync_output_validates_with_frictionless(project):
@@ -812,7 +828,7 @@ def test_rename_recipe_folder_then_sync(driver, project):
     assert out.ok, out.message
     assert ran(driver, out) == ["panel", "gdp_per_capita"]
     data = load(project)
-    assert [r["name"] for r in data["recipes"]] == ["gdp_per_capita", "panel"]
+    assert [r["name"] for r in data["recipes"]] == ["panel", "gdp_per_capita"]  # in run order
     view = next(r for r in data["resources"] if r["path"] == "useful-views/pwt-panel.parquet")
     assert view["producedBy"]["recipe"] == "panel"
     assert_clean(driver, project)

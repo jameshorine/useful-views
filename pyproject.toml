@@ -1,6 +1,6 @@
 [project]
 name = "useful-views"
-version = "0.1.0"
+version = "0.2.0"
 description = "A framework and data project structure in which every derived table records the recipe that made it."
 readme = "README.md"
 license = "MIT"
@@ -20,17 +20,22 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/jameshorine/useful-views"
 Documentation = "https://jameshorine.github.io/useful-views/"
 Issues = "https://github.com/jameshorine/useful-views/issues"
+Changelog = "https://github.com/jameshorine/useful-views/blob/main/CHANGELOG.md"
 
 [project.scripts]
 useful-views = "useful_views.cli:main"
 
 [dependency-groups]
+bench = [
+    "matplotlib>=3.8",
+]
 dev = [
     "pytest>=8",
     "pytest-xdist>=3",

@@ -114,10 +114,13 @@ def findings_page() -> str:
         "`useful-views check` (Python: `check()`) changes nothing and reports these kinds of finding, in this "
         "order. Each finding's message says what to do about it. With `--json`, each finding is an object with "
         "`kind`, `path`, `message`, `rule` (for `refused`, the rule's number), `recipe` (the recipe concerned, "
-        "if any) and `reason` (for `out-of-date`: `changed`, `outputs-changed` or `upstream`), and the document "
+        "if any) and `reason` (for `out-of-date`: `changed`, `outputs-changed`, `outputs-dropped`, "
+        "`input-data-changed` or `upstream`; for `missing-input`: `made-by-recipe`), and the document "
         "also has a `warnings` list. The command exits with 1 when it finds anything.\n\n",
         _table("Kind", rows, "Meaning"),
-        "\n`check` does not notice changes inside a step's code or to a file's contents.\n",
+        "\n`check` does not notice changes inside a step's code or to a raw file until that recipe runs "
+        "again, nor view files on disk that no longer match their record (as after a `git pull`): then "
+        "use `useful-views sync --all`.\n",
     ])
 
 

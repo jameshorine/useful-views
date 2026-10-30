@@ -15,6 +15,7 @@ from .errors import (
 )
 from .cookbooks import CookbookError, CookbookResult, cookbook
 from .examples import ExampleError, example
+from .fingerprints import DataHashError, data_hash
 from .new import new_recipe
 from .project import init, root
 from .rulebook import RULES, Rule
@@ -29,6 +30,7 @@ except PackageNotFoundError:  # running from a source tree that is not installed
 __all__ = [
     "CookbookError",
     "CookbookResult",
+    "DataHashError",
     "ExampleError",
     "Finding",
     "OutputError",
@@ -44,6 +46,7 @@ __all__ = [
     "UsefulViewsWarning",
     "check",
     "cookbook",
+    "data_hash",
     "example",
     "init",
     "new_recipe",

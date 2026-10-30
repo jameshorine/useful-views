@@ -541,7 +541,7 @@ def test_two_outputs_are_both_recorded_with_two_catalog_sections(driver, project
     # Views of one recipe are sorted by path.
     assert [v["path"] for v in views] == sorted(outputs)
     for v in views:
-        assert v["producedBy"] == {"recipe": "r", "inputs": [raw]}
+        assert v["producedBy"] == {"recipe": "r", "inputs": [raw], "inputFingerprints": {}}
     sections = catalog_sections(project)
     assert list(sections) == ["alpha.parquet", "zeta.parquet"]
     for section in sections.values():

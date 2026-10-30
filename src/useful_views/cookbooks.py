@@ -16,7 +16,7 @@ from .errors import ProjectError, UsefulViewsError
 from .paths import RAW
 from .project import find_root
 from .lock import project_lock
-from .record import load_datapackage, write_atomic
+from .record import load_datapackage, run_order, write_atomic
 
 COOKBOOK = "cookbook.json"
 FORMAT_VERSION = 1
@@ -28,7 +28,9 @@ NOT_BLOCKING = {"stray-file", "stale-cookbook", "stale-catalog"}
 # the recipe folders count; they need no data on disk, so a CI job with only
 # the git checkout (no raw/, no views) gets a real answer.
 RECORD_KINDS = {"unreadable-recipe", "refused", "never-run", "missing-recipe-folder"}
-RECORD_REASONS = {"changed", "outputs-changed", "outputs-dropped"}
+# "input-data-changed" too: datapackage.json disagrees with itself (a view's
+# recorded input fingerprint no longer matches that input's own).
+RECORD_REASONS = {"changed", "outputs-changed", "outputs-dropped", "input-data-changed"}
 
 
 def _out_of_record(finding) -> bool:
@@ -83,33 +85,10 @@ class CookbookResult:
         }
 
 
-def _run_order(records: dict[str, dict]) -> list[str]:
-    """Recipe names, upstream first; recipes that do not depend on each other
-    in name order."""
-    makers = {out: name for name, r in records.items() for out in r["outputs"]}
-    upstream = {
-        name: sorted({makers[i] for i in r["inputs"] if i in makers} - {name}) for name, r in records.items()
-    }
-    order: list[str] = []
-    done: set[str] = set()
-
-    def visit(name: str, seen: tuple[str, ...] = ()) -> None:
-        if name in done or name in seen:
-            return
-        for up in upstream[name]:
-            visit(up, (*seen, name))
-        done.add(name)
-        order.append(name)
-
-    for name in sorted(records):
-        visit(name)
-    return order
-
-
 def build(data: dict) -> dict:
     """The cookbook for a project's recorded recipes (datapackage.json)."""
     records = {r["name"]: r for r in data["recipes"]}
-    order = _run_order(records)
+    order = run_order(records)
     raw = sorted({p for r in records.values() for p in r["inputs"] if p.startswith(f"{RAW}/")})
     return {
         "version": FORMAT_VERSION,
@@ -173,13 +152,16 @@ def cookbook(*, root: str | Path | None = None, check: bool = False) -> Cookbook
     with its description, inputs, outputs and steps, and the raw inputs the
     recipes read. It is generated from the record in `datapackage.json`, so
     to write it the project must be in sync: if `check` finds anything other
-    than stray files or a stale catalog or cookbook, nothing is written. Writing an unchanged cookbook
-    leaves the file untouched. Commit it to git, like a lock file.
+    than stray files or a stale catalog or cookbook, nothing is written.
+    Writing an unchanged cookbook leaves the file untouched. Commit it to
+    git, like a lock file.
 
     `check=True` needs no data: it works on a fresh clone or in CI, where
     raw/ and the views are not present. It compares `cookbook.json` with the
     committed `datapackage.json`, and also reports recipes whose folder no
-    longer matches their record (edited, added or removed without a sync).
+    longer matches their record (edited, added or removed without a sync),
+    and recipes made from an older version of a view they read
+    (`input-data-changed`).
 
     Args:
         root: The project folder. By default it is found by walking up from

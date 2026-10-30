@@ -305,16 +305,19 @@ an environment match its lock file. Records only ever come from real runs.
    recipe no longer lists in its outputs, along with those view files. It
    warns about recipes that read a removed view.
 3. It runs, upstream first, every recipe that has never run, whose
-   `recipe.toml` or steps no longer match its record, or whose views are
-   missing, and everything downstream of those. `--all` (`all=True`) runs
-   every recipe. It stops at the first failure or interruption; recipes
-   that ran before it stay recorded, and the message says what to run next.
+   `recipe.toml` or steps no longer match its record, whose views are
+   missing, or that read a view since made again with different data, and
+   everything downstream of those. A recipe downstream is skipped if the
+   views it reads come out the same. `--all` (`all=True`) runs every recipe.
+   It stops at the first failure or interruption; recipes that ran before it
+   stay recorded, and the message says what to run next.
 
 On a fresh clone, place the raw files and run `useful-views sync` to make
 every view. `sync` does not notice a change inside a step's code, a raw file
 replaced under the same name, or a `git pull` or branch switch (the views
-are not in git). After any of those, use `sync --all`, or `run` the changed
-recipe and then each recipe downstream of it.
+are not in git). After any of those, use `sync --all`. After changing a
+step's code, you can instead `run` that recipe and then `useful-views sync`,
+which runs whatever downstream now reads different data.
 
 Only one command that changes a project runs at a time: a second `run`,
 `sync` or `cookbook` started meanwhile is refused instead of overwriting the
@@ -336,7 +339,7 @@ project you did not write, or changes someone proposes, before running them.
 | `refused` | A recipe breaks a rule, so `run` and `sync` would refuse it. The finding names the rule. |
 | `missing-input` | An input a `recipe.toml` declares is not on disk. |
 | `never-run` | A recipe that has never run successfully. |
-| `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, or a view it reads will be made again. |
+| `out-of-date` | A recipe `sync` would run again: its `recipe.toml` or steps changed, its outputs changed, a view it reads was made again with different data since it ran (`input-data-changed`), or a view it reads will be made again. |
 | `missing-recipe-folder` | `datapackage.json` records a recipe whose folder is gone. `sync` removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
 | `stale-cookbook` | `cookbook.json` no longer matches the recorded recipes. Update it with `useful-views cookbook`. |
@@ -345,7 +348,8 @@ project you did not write, or changes someone proposes, before running them.
 
 Each finding says what to do about it, and `check` uses the same plan as
 `sync`, so a clean `check` means `sync` has nothing to refuse. It does not
-notice changes inside a step's code or to a file's contents.
+notice changes inside a step's code or to a raw file's contents until that
+recipe runs again.
 
 ### Rules
 
@@ -443,8 +447,9 @@ records what each recipe made from what. `frictionless validate
 datapackage.json` passes on it whenever every recorded file is present.
 
 - `resources` lists every raw file a recorded recipe read, then every view,
-  each with its columns and their types. A view also has `producedBy`: the
-  recipe that made it and that recipe's inputs.
+  each with its columns and their types. A view also has its `fingerprint`,
+  a hash of its contents, and `producedBy`: the recipe that made it, that
+  recipe's inputs, and the fingerprints those inputs had when it ran.
 - `recipes` lists each recorded recipe with its description, inputs, outputs
   and steps, as they were at its last successful run.
 - Column types come from the files themselves: a parquet file's own types,
@@ -454,6 +459,11 @@ datapackage.json` passes on it whenever every recorded file is present.
   (`.dta`, `.xlsx`, ...), and CSVs that are not plain comma-separated UTF-8,
   are recorded without columns.
 - Never edit it by hand. If it is damaged, restore it from git.
+
+Recipes, and their views, are listed in the order they run, so the file reads
+in the order the data is made. See
+[Records](https://jameshorine.github.io/useful-views/user-guide/concepts/records.html)
+for the details.
 
 **`useful-views/README.md`** is a catalog generated from `datapackage.json`:
 for each view, the recipe's description, its inputs, its numbered steps, and
@@ -494,16 +504,40 @@ run `useful-views cookbook`, `cookbook.json`; never edit those by hand.
 `init` writes `.gitignore` and `AGENTS.md` once, if they are not there; after
 that they are yours. So no file has two authors at the same time.
 
-## Planned, TODO, Not yet
+## How `useful-views` compares
 
-- Hashing. Version 1 of `cookbook.json` records every recipe and its steps.
-  Later versions will add the SHA-256 of every raw input, recipe file, step
-  and view, and the environment the steps ran in, locking them the way
-  `uv.lock` locks a Python environment. Then useful-views can report a view
-  as stale, and `sync` can notice a change inside a step's code, a replaced
-  raw file, or views left from before a `git pull`.
-- Whether a step should have an upper limit on how much it does.
-- Recording where a raw file came from and how to fetch it again.
+`useful-views` is a fixed project structure, not a general workflow engine. Every
+derived table lives in `useful-views/` and records the recipe, inputs and steps
+that made it. Recipes are plain folders of numbered Python files, so you can
+understand a project by reading it: no rule language, no pipeline definition
+file, no configuration layer. The same structure makes a project easy for AI
+coding tools to work in. They get an `AGENTS.md`, `--json` output and numbered
+rules they can check against.
+
+- **Snakemake** is a full workflow engine with its own rule language, wildcards
+  and cluster and cloud execution. Choose it for large or highly parallel
+  pipelines. Choose useful-views when you want a small, readable project where
+  provenance comes from the layout itself.
+- **Kedro** is a framework for production data pipelines, with a data catalog,
+  configuration environments and a project template built for teams.
+  useful-views is a lighter fit for one researcher or a small lab.
+- **DVC** versions data and pipelines alongside Git and syncs them to remote
+  storage. useful-views doesn’t version or store data. It records how each
+  derived table was made, and can sit alongside DVC or Git LFS.
+- **Frictionless Data Packages** are a standard for describing datasets, not a
+  tool for producing them. useful-views writes a standard `datapackage.json`,
+  so its outputs work with Frictionless tools.
+
+## Open Questions (Planned Enhancements)
+
+- Fingerprints. useful-views records a fingerprint of every view (its data
+  hash) and of the views each recipe read, and `check` and `sync` compare
+  them to find views made from older data. Next: comparing each view's file
+  on disk with its record, which catches a `git pull`. Later: fingerprints of
+  raw files, recipe files and steps, and the environment the steps ran in,
+  locking them the way `uv.lock` locks a Python environment.
+- We defined a step to have a "floor" size: any one-change in a data frame means we took a step. Should there be an upper limit on the size of a step? i.e. if we chain togther, say, 100 different operations, should that count as a step? Should there be an upper limit on how much a step does? 
+- How can we document and record where a raw file came from and how to fetch it again? Is it just a document of instrutions? 
 - More view formats alongside parquet, such as CSV and Arrow.
 - Raw inputs that are folders or sets of files, such as partitioned parquet
   datasets and shapefiles.
@@ -525,7 +559,7 @@ If you use useful-views in your research, please cite it. GitHub's
 or use:
 
 > Horine, J. (2026). *useful-views: Documented derived tables for
-> data projects* (Version 0.1.0) [Computer software].
+> data projects* (Version 0.2.0) [Computer software].
 > https://github.com/jameshorine/useful-views
 
 ```bibtex
@@ -533,7 +567,7 @@ or use:
   author  = {Horine, James},
   title   = {useful-views: Documented derived tables for data projects},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.2.0},
   url     = {https://github.com/jameshorine/useful-views},
   license = {MIT}
 }

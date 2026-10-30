@@ -41,7 +41,7 @@ def test_cookbook_contents(tmp_path):
     assert book["version"] == 1 and book["generator"] == "useful-views" and book["project"] == "reference"
     assert book["raw_inputs"] == ["raw/pwt110_bra_deu_esp_usa.csv"]
     records = json.loads((root / "datapackage.json").read_text(encoding="utf-8"))["recipes"]
-    assert sorted(book["recipes"], key=lambda r: r["name"]) == records
+    assert book["recipes"] == records  # the same records, in the same run order
 
 
 def test_writing_twice_changes_nothing(tmp_path):

@@ -21,16 +21,37 @@ whenever every recorded file is present. It sits at the project root because
 it describes files in both `raw/` and `useful-views/`.
 
 - `resources` lists every raw file a recorded recipe read, then every view,
-  each with its columns and their types. A view also has `producedBy`: the
-  recipe that made it and that recipe's inputs.
+  each with its columns and their types. A view also has its `fingerprint`
+  and `producedBy`: the recipe that made it, that recipe's inputs, and the
+  fingerprints the views among those inputs had when it ran (see
+  [Fingerprints](#fingerprints) below).
 - `recipes` lists each recorded recipe with its description, inputs,
   outputs and steps, as they were at its last successful run.
+
+A field this version does not write, perhaps from a newer useful-views, is
+never an error and never makes a recipe out of date. It is kept when the
+file is rewritten, except in the entries a run writes afresh, those of the
+recipe that ran, its views and the raw files it read: they describe the new
+run.
+
+Recipes, and the views under them, are listed in the order they run, so the
+file reads in the order the data is made. Each view starts with what it is
+and where it came from; its columns come last. Anything short, such as a
+column or a list of paths, is on one line.
 
 ```json
 {
   "name": "gdp-per-capita",
-  "type": "table",
   "path": "useful-views/gdp-per-capita.parquet",
+  "fingerprint": "datahash1:sha256:69378218dc105ea3cc282fc234f9e6646592d4877692a013eb0cf67305e5cfe1",
+  "producedBy": {
+    "recipe": "gdp_per_capita",
+    "inputs": ["useful-views/pwt-panel.parquet"],
+    "inputFingerprints": {
+      "useful-views/pwt-panel.parquet": "datahash1:sha256:bdc104f8b4ba8296317c5c9eb9b5500cece148f7c7e36318d423ba60fa806d14"
+    }
+  },
+  "type": "table",
   "scheme": "file",
   "format": "parquet",
   "mediatype": "application/parquet",
@@ -39,10 +60,6 @@ it describes files in both `raw/` and `useful-views/`.
       {"name": "iso", "type": "string"},
       {"name": "year", "type": "integer"}
     ]
-  },
-  "producedBy": {
-    "recipe": "gdp_per_capita",
-    "inputs": ["useful-views/pwt-panel.parquet"]
   }
 }
 ```
@@ -59,6 +76,65 @@ without the extension, lowercased, with `/` and other characters than
 `wave1-survey`. Accented letters lose their accents, and letters of other
 scripts are written as their Unicode code point, so names stay distinct. Two
 recorded files may not share one ([rule 8](../reference/rules.md)).
+
+## Fingerprints
+
+*New in version 0.2.0.* When a recipe runs, useful-views takes fingerprints
+at two moments, both [data hashes](../reference/data-hash.md) of a view's
+contents:
+
+- just before the steps run, the fingerprint of each view the recipe reads,
+  recorded in `producedBy.inputFingerprints`;
+- right after they succeed, the fingerprint of each view it made, recorded
+  in `fingerprint`.
+
+This is how the parts of `datapackage.json` refer to each other:
+
+```text
+datapackage.json
+├── resources                    one entry per file
+│   ├── a raw file               name, path, format, schema
+│   └── a view
+│       ├── name, path           the view's path identifies it
+│       ├── fingerprint          what the view holds, as a data hash
+│       ├── producedBy
+│       │   ├── recipe           → the recipe of that name in `recipes`
+│       │   ├── inputs           → the paths of the raw files and views it read
+│       │   └── inputFingerprints  { path of each view in `inputs` : its fingerprint then }
+│       └── schema               its columns and their types
+└── recipes                      one entry per recipe, in run order
+    └── a recipe                 name, description, path, inputs, outputs, steps
+```
+
+A view's `inputFingerprints` says what each view it read held at the time,
+and that view's own `fingerprint` says what it holds now. In the quickstart
+project, with the fingerprints shortened to four characters:
+
+| View | Its fingerprint | Made from | That input's fingerprint then |
+|---|---|---|---|
+| pwt-panel | `bdc1` | the raw CSV | (raw files have none yet) |
+| gdp-per-capita | `6937` | pwt-panel | `bdc1` |
+
+The two `bdc1`s match: gdp-per-capita was made from pwt-panel as it is. Fix a
+step of `pwt_panel` and run only that recipe, and if the fix changes the data,
+pwt-panel's fingerprint changes, say to `7a2e`, while gdp-per-capita still
+records `bdc1`: it was made from the old pwt-panel.
+
+A view whose columns the data hash does not cover yet (a list, struct or map
+in each cell, or a column the file labels GEOMETRY or GEOGRAPHY) has the
+fingerprint `null`. Records written before
+fingerprints, by useful-views 0.1, have none; they stay valid, and each view
+gets its fingerprint the next time its recipe runs (`useful-views sync
+--all` runs them all). A fingerprint this version does not understand,
+perhaps written by a newer useful-views, is treated like a missing one. In
+each of these cases `check` and `sync` cannot tell whether the recipes that
+read the view are up to date, and say so in a note.
+
+Taking fingerprints means reading each view a recipe makes or reads once
+more (and, for `run`, the file a view replaces, when other recipes read
+it): about 22 million values a second on a laptop, so a few seconds for
+most views, and about 2 minutes for a 15 GB one (see
+[Speed](../reference/data-hash.md#speed)).
 
 ## useful-views/README.md
 
@@ -77,6 +153,12 @@ with its steps. See [Cookbook](cookbook.md).
 ## What the record does not track yet
 
 The record says which recipe made each view, from which inputs, with which
-steps. It does not yet record checksums of the files, so it cannot tell that
-a raw file, a step's code or a view changed after the run. That is planned
-for a future release.
+steps, and the fingerprints of the views involved. `check` and `sync`
+compare those fingerprints with each other, so they report a view made
+from an older version of another (`input-data-changed`). The record does
+not yet hold fingerprints of raw files or of steps' code, and a view's
+file on disk is compared with its record only when a recipe is about to
+read it (`check` never looks), so a `git pull` still calls for
+`useful-views sync --all`. See
+[Stale views and fingerprints](stale-views.md) for what that means, what to
+do today, and what is planned.

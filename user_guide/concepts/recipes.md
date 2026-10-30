@@ -51,10 +51,10 @@ the spelling.
 A raw input is a file you place in `raw/` by hand; it may sit in a subfolder
 and be in any format that is a single file. A view input is another recipe's
 output. Reading it makes that recipe **upstream** of this one: `sync` runs
-it first, and runs this one again whenever it runs the upstream one again.
-`useful-views run` on the upstream recipe does not: it warns and names this
-one, and a later `sync` or `check` does not notice, so use `sync --all` or
-run this one too. Recipes may not form a cycle, and a recipe may not read
+it first, and runs this one again whenever it runs the upstream one. `useful-views run` on the upstream recipe runs
+only that one: if its view changed, it warns and names this one, `check`
+reports this one as out of date, and `sync` runs it (see
+[Fingerprints](records.md#fingerprints)). Recipes may not form a cycle, and a recipe may not read
 its own view.
 
 An output is a view that only this recipe makes. Views are parquet files, so
@@ -101,7 +101,7 @@ fine.
 `sync` compares each recipe folder with its record from the last successful
 run. It notices a changed description, inputs or outputs in `recipe.toml`, a
 step added, removed or renamed, and a step's changed description, and runs
-the recipe again, with everything downstream of it. An output you only
+the recipe again, then every recipe downstream of it. An output you only
 remove is different: `sync` deletes that view and drops it from the record,
 without running the recipe again.
 

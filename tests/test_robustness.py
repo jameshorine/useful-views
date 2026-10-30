@@ -36,6 +36,14 @@ def chain(root: Path) -> None:
     uvs.sync(root=root)
 
 
+def change_a(root: Path) -> None:
+    """Change a's record and its data. sync then runs a, and b and c after it."""
+    write_recipe(root, "a", inputs=["raw/data.csv"], outputs=["useful-views/a.parquet"],
+                 description="Test recipe a, changed.", steps={"01_make.py": (
+                     "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
+                     "pq.write_table(pa.table({'id': [7, 8, 9]}), 'useful-views/a.parquet')\n")})
+
+
 # --- the project lock -----------------------------------------------------------
 
 
@@ -62,6 +70,7 @@ def held(project):
     yield proc
     proc.stdin.close()
     proc.wait(timeout=30)
+    proc.stdout.close()
 
 
 def test_a_second_command_is_refused_while_another_changes_the_project(project, held):
@@ -139,6 +148,8 @@ def test_a_lock_left_by_a_killed_process_does_not_block(project):
     # a launcher that starts the real interpreter as a process of its own.
     os.kill(int(holder), getattr(signal, "SIGKILL", signal.SIGTERM))
     proc.wait(timeout=30)
+    proc.stdin.close()
+    proc.stdout.close()
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     uvs.sync(root=project)
 
@@ -212,9 +223,11 @@ def test_sigterm_during_sync_says_what_was_done(project):
 
 def test_run_names_the_recipes_downstream_of_it(project):
     chain(project)
+    change_a(project)
     with pytest.warns(uvs.UsefulViewsWarning, match="recipes/b, recipes/c") as caught:
         result = uvs.run("a", root=project)
-    assert any("useful-views sync --all" in w for w in result.warnings)
+    # Their records show they read a's old data, so a plain sync finds them.
+    assert any("Bring them up to date with: useful-views sync." in w for w in result.warnings)
     assert len([w for w in caught if "made its views again" in str(w.message)]) == 1
 
 
@@ -232,15 +245,14 @@ def test_sync_does_not_warn_about_recipes_it_runs_itself(project):
 def test_a_sync_that_stops_removes_views_made_from_views_it_replaced(project):
     chain(project)
     # b's code now fails (its top comment, and so its record, is unchanged);
-    # a has changed, so sync runs a, then b and c downstream of it.
+    # a's record and data have changed, so sync runs a, then b and c, which read it.
     write(project, "recipes/b/01_make.py", "# Write a small table to each output.\nraise SystemExit('boom')\n")
-    write(project, "recipes/a/recipe.toml", (project / "recipes/a/recipe.toml").read_text().replace(
-        "Test recipe a.", "Test recipe a, changed."))
+    change_a(project)
     with pytest.raises(uvs.StepFailed) as err:
         uvs.sync(root=project)
     message = str(err.value)
     assert "sync stopped at recipes/b" in message and "It had not yet run: recipes/c" in message
-    assert "The views of recipes/c were made from views this sync had already made again" in message
+    assert "The views of recipes/b, recipes/c were removed before anything ran" in message
     assert message.rstrip().endswith("Fix the problem above, then run: useful-views sync")
     assert "then run: useful-views run" not in message  # inside sync, sync gives the next command
     assert err.value.sync_result.ran == ("a",)
@@ -409,8 +421,7 @@ def test_a_record_naming_a_folder_outside_work_is_refused_and_nothing_is_deleted
 
 def test_a_sync_interrupted_before_a_recipe_starts_still_removes_its_stale_views(project, monkeypatch):
     chain(project)
-    write(project, "recipes/a/recipe.toml", (project / "recipes/a/recipe.toml").read_text().replace(
-        "Test recipe a.", "Test recipe a, changed."))
+    change_a(project)
     real_run = syncing._run
 
     def run(project_, name, **kwargs):
@@ -481,4 +492,41 @@ def test_sync_deletes_a_removed_recipes_read_only_work_folder(project):
     assert "work/a/" in result.deleted and not (project / "work" / "a").exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_deleting_a_read_only_work_folder_never_changes_what_a_symlink_points_to(project, tmp_path):
+    import stat
+
+    from useful_views.runner import rmtree
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not the project's")
+    outside.chmod(0o600)
+    locked = project / "work" / "a" / "sub"
+    locked.mkdir(parents=True)
+    (locked / "link").symlink_to(outside)
+    locked.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    rmtree(project / "work" / "a")
+    assert not (project / "work" / "a").exists()
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o600 and outside.read_text() == "not the project's"
+
+
 VIEW_A = "useful-views/a.parquet"
+
+
+def test_sync_passes_on_a_warning_from_other_code_as_it_was(project, monkeypatch):
+    """A warning from other code while a recipe runs keeps its own category,
+    and is not taken for one of sync's."""
+    import warnings
+
+    write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=[VIEW_A])
+    real = runner.run_step
+
+    def run_step(root, step):
+        warnings.warn("from another library", FutureWarning)
+        return real(root, step)
+
+    monkeypatch.setattr(runner, "run_step", run_step)
+    with pytest.warns(FutureWarning, match="from another library") as caught:
+        result = uvs.sync(root=project)
+    assert result.ran == ("a",) and result.warnings == ()
+    assert not [w for w in caught if issubclass(w.category, uvs.UsefulViewsWarning)]

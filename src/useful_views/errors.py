@@ -24,6 +24,12 @@ class UsefulViewsError(Exception):
         self.recipe = recipe
         self.sync_result = None
 
+    def __reduce__(self):
+        # Pickled with its attributes, so an error raised in another process
+        # (data_hash in a process pool, say) arrives whole; the default would
+        # call __init__ with the message alone, which needs more.
+        return (_rebuild, (type(self), str(self)), self.__dict__)
+
     @property
     def message(self) -> str:
         return str(self)
@@ -36,6 +42,12 @@ class UsefulViewsError(Exception):
             "recipe": self.recipe,
             "sync_result": self.sync_result.to_dict() if self.sync_result is not None else None,
         }
+
+
+def _rebuild(cls: type, message: str) -> UsefulViewsError:
+    error = cls.__new__(cls)
+    Exception.__init__(error, message)
+    return error
 
 
 class ProjectError(UsefulViewsError):

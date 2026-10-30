@@ -3,6 +3,8 @@
 datapackage.json is the record store: its `recipes` list holds one record
 per recorded recipe, and its `resources` list describes the raw files those
 recipes read and the views they made ("Generated files" in the README).
+Each view's entry also holds its fingerprint (its data hash) and, in
+`producedBy`, the fingerprints of the views its recipe read.
 """
 
 from __future__ import annotations
@@ -20,7 +22,8 @@ import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 
 from .errors import ProjectError
-from .paths import CATALOG, DATAPACKAGE, VIEWS, resource_name, slug
+from .fingerprints import DataHashError, hash_file
+from .paths import CATALOG, DATAPACKAGE, RAW, UNSEEN, VIEWS, resource_name, slug
 
 BOM = b"\xef\xbb\xbf"
 
@@ -191,10 +194,65 @@ def describe_raw(root: Path, rel: str) -> dict:
     return describe_file(rel)
 
 
-def describe_view(root: Path, rel: str, recipe: str, inputs: list[str]) -> dict:
-    resource = describe_parquet(root, rel)
-    resource["producedBy"] = {"recipe": recipe, "inputs": list(inputs)}
-    return resource
+def describe_view(root: Path, rel: str, recipe: str, inputs: list[str], fingerprint: str | None,
+                  input_fingerprints: dict[str, str | None]) -> dict:
+    described = describe_parquet(root, rel)
+    described["fingerprint"] = fingerprint
+    described["producedBy"] = {
+        "recipe": recipe,
+        "inputs": list(inputs),
+        "inputFingerprints": dict(input_fingerprints),
+    }
+    return view_layout(described)
+
+
+# The fields that say what a view is and where it came from come first, so a
+# reader sees them together; its schema, often long, comes last.
+VIEW_FIRST = ("name", "path", "fingerprint", "producedBy")
+
+
+def view_layout(resource: dict) -> dict:
+    first = {k: resource[k] for k in VIEW_FIRST if k in resource}
+    return {**first, **{k: v for k, v in resource.items() if k not in first}}
+
+
+# --- fingerprints -------------------------------------------------------------
+
+# The fingerprints this version understands: data hashes under rules
+# version 1 (see user_guide/reference/data-hash.md). Anything else in a
+# fingerprint field, from a newer version or a hand edit, is never an
+# error: it counts as unknown, and check and sync say so.
+UNDERSTOOD = re.compile(r"datahash1:sha256:[0-9a-f]{64}")
+
+
+def understood(value: object) -> bool:
+    return isinstance(value, str) and UNDERSTOOD.fullmatch(value) is not None
+
+
+def fingerprint_of(path: Path, shown: str) -> str | None:
+    """A view's fingerprint: its data hash, or None when the rules do not
+    cover one of its columns (a list or struct in a cell). Raises
+    DataHashError, naming the file `shown`, when it cannot be read."""
+    try:
+        return hash_file(path, shown)
+    except DataHashError as error:
+        if error.column is None:
+            raise
+        return None
+
+
+def known_fingerprint(root: Path, rel: str, known: dict) -> str | None:
+    """fingerprint_of, hashing each version of a file once. `known` holds what
+    was hashed before, by path, with the file's size, modification and change
+    times and file id then; a file that still has all four is not hashed
+    again (any write gives a new change time)."""
+    st = os.stat(root / rel)
+    stamp = (st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino)
+    if rel in known and known[rel][0] == stamp:
+        return known[rel][1]
+    value = fingerprint_of(root / rel, rel)
+    known[rel] = (stamp, value)
+    return value
 
 
 # --- datapackage.json -------------------------------------------------------
@@ -217,44 +275,147 @@ def load_datapackage(root: Path) -> dict:
     except FileNotFoundError as exc:
         raise ProjectError(f"{path} is missing. {restore}") from exc
     except UnicodeDecodeError as exc:
-        raise ProjectError(f"{path} is not valid JSON ({exc}). {restore}") from exc
+        raise ProjectError(f"{DATAPACKAGE} is not valid JSON ({exc}). {restore}") from exc
     if re.search(r"^(<<<<<<<|>>>>>>>)( |$)", text, re.MULTILINE):
         generated = [rel for rel in (DATAPACKAGE, CATALOG, "cookbook.json") if (root / rel).exists()]
         then = "useful-views sync --all" + (" and useful-views cookbook" if "cookbook.json" in generated else "")
         raise ProjectError(
-            f"{path} has git merge conflict markers. It is generated, so do not resolve the conflict by hand: "
-            f"take either side (git checkout --ours {' '.join(generated)}), then run {then}, and git add those "
-            "files. sync --all runs every recipe again, so their records come from real runs."
+            f"{DATAPACKAGE} has git merge conflict markers. It is generated, so do not resolve the conflict by "
+            f"hand: take either side (git checkout --ours {' '.join(generated)}), then run {then}, and git add "
+            "those files. sync --all runs every recipe again, so their records come from real runs."
         )
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ProjectError(f"{path} is not valid JSON ({exc}). {restore}") from exc
-    ok = (
-        isinstance(data, dict)
-        and isinstance(data.get("resources"), list)
-        and isinstance(data.get("recipes"), list)
-        and all(isinstance(r, dict) and isinstance(r.get("path"), str) for r in data["resources"])
-        and all(
-            isinstance(r, dict)
-            and isinstance(r.get("name"), str)
-            and isinstance(r.get("path"), str)
-            and isinstance(r.get("inputs"), list)
-            and isinstance(r.get("outputs"), list)
-            for r in data["recipes"]
-        )
-    )
-    if not ok:
-        raise ProjectError(f"{path} does not have the structure useful-views writes. {restore}")
-    for record in data["recipes"]:
-        bad = [o for o in record["outputs"] if not (isinstance(o, str) and RECORD_OUTPUT.match(o))]
-        if not RECORD_NAME.match(record["name"]) or bad:
-            what = f"output {bad[0]!r}" if bad else f"recipe name {record['name']!r}"
+        raise ProjectError(f"{DATAPACKAGE} is not valid JSON ({exc}). {restore}") from exc
+    where = _shape_problem(data)
+    if where:
+        raise ProjectError(f"{DATAPACKAGE} does not have the structure useful-views writes (at {where}). {restore}")
+    for rel in _recorded_paths(data):
+        unseen = re.search(f"[{UNSEEN}]", rel)
+        if unseen:
             raise ProjectError(
-                f"{path} records a {what} that useful-views never writes (it was edited by hand, or left by a "
-                f"merge), so nothing is changed. {restore}"
+                f"{DATAPACKAGE} records the path {rel!r}, which holds an invisible character "
+                f"(U+{ord(unseen.group()):04X}) that changes how it prints. useful-views 0.1 accepted such names; "
+                "this version does not, so nothing is changed. If a recipe.toml declares that path, change it "
+                "there and in the steps (renaming the file, if it is in raw/), then delete datapackage.json and "
+                "run useful-views init and useful-views sync --all. Otherwise datapackage.json was edited by "
+                "hand: restore it from git (git checkout -- datapackage.json)."
             )
+    for record in data["recipes"]:
+        bad = [o for o in record["outputs"] if not RECORD_OUTPUT.match(o)]
+        if not RECORD_NAME.match(record["name"]) or bad:
+            what = f"an output {bad[0]!r}" if bad else f"a recipe name {record['name']!r}"
+            raise ProjectError(
+                f"{DATAPACKAGE} records {what} that useful-views never writes (it was edited by hand, or left by "
+                f"a merge), so nothing is changed. {restore}"
+            )
+    for resource in data["resources"]:
+        problem = _resource_problem(resource)
+        if problem:
+            raise ProjectError(
+                f"{DATAPACKAGE} records {problem} that useful-views never writes (it was edited by hand, or left "
+                f"by a merge), so nothing is changed. {restore}"
+            )
+    for kind, items, key in (("view or raw file", data["resources"], "path"), ("recipe", data["recipes"], "name")):
+        seen: set[str] = set()
+        for item in items:
+            if item[key] in seen:
+                raise ProjectError(
+                    f"{DATAPACKAGE} records the {kind} {item[key]!r} twice, which useful-views never writes (it "
+                    f"was edited by hand, or left by a merge), so nothing is changed. {restore}"
+                )
+            seen.add(item[key])
     return data
+
+
+def _recorded_paths(data: dict) -> list[str]:
+    """Every path datapackage.json records, once its shape is checked."""
+    paths = [p for r in data["recipes"] for key in ("path", "inputs", "outputs")
+             for p in ([r[key]] if key == "path" else r[key])]
+    paths += [s["path"] for r in data["recipes"] for s in r.get("steps", [])]
+    for resource in data["resources"]:
+        paths.append(resource["path"])
+        paths += resource.get("producedBy", {}).get("inputs", [])
+    return paths
+
+
+def _shape_problem(data: object) -> str | None:
+    """Where datapackage.json departs from the shape useful-views writes, if
+    anywhere: everything read later can then be read without a crash."""
+    def strings(value: object) -> bool:
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+    if not isinstance(data, dict):
+        return "the top level"
+    for key in ("resources", "recipes"):
+        if not isinstance(data.get(key), list):
+            return key
+    for i, r in enumerate(data["recipes"]):
+        at = f"recipes[{i}]"
+        if not (isinstance(r, dict) and isinstance(r.get("name"), str) and isinstance(r.get("path"), str)):
+            return at
+        if not isinstance(r.get("description", ""), str):
+            return f"{at}.description"
+        for key in ("inputs", "outputs"):
+            if not strings(r.get(key)):
+                return f"{at}.{key}"
+        steps = r.get("steps", [])
+        if not (isinstance(steps, list) and all(
+                isinstance(s, dict) and isinstance(s.get("path"), str) and isinstance(s.get("description"), str)
+                for s in steps)):
+            return f"{at}.steps"
+    for i, r in enumerate(data["resources"]):
+        at = f"resources[{i}]"
+        if not (isinstance(r, dict) and isinstance(r.get("path"), str)):
+            return at
+        schema = r.get("schema", {})
+        fields = schema.get("fields", []) if isinstance(schema, dict) else None
+        if not (isinstance(fields, list) and all(
+                isinstance(f, dict) and isinstance(f.get("name"), str) and isinstance(f.get("type", ""), str)
+                for f in fields)):
+            return f"{at}.schema"
+        produced = r.get("producedBy", {})
+        if not (isinstance(produced, dict) and strings(produced.get("inputs", []))):
+            return f"{at}.producedBy"
+    return None
+
+
+def _resource_problem(resource: dict) -> str | None:
+    """What is wrong with a resource useful-views did not write, if anything.
+    Paths are checked too, so no crafted record can name a file to delete or
+    print control characters to the terminal."""
+    rel = resource["path"]
+    if "producedBy" not in resource:
+        return None if RECORD_RAW.match(rel) else f"a raw file path {rel!r}"
+    produced = resource["producedBy"]
+    if not RECORD_OUTPUT.match(rel):
+        return f"a view path {rel!r}"
+    if not (isinstance(produced.get("recipe"), str) and RECORD_NAME.match(produced["recipe"])):
+        return f"a producedBy for {rel}"
+    return None  # fingerprints are never refused; see not_understood
+
+
+def not_understood(data: dict) -> list[str]:
+    """Files whose recorded fingerprints this version does not understand
+    (from a newer version of useful-views, or a hand edit). A null
+    fingerprint, or none at all, is understood: it says there is none."""
+    found = []
+    for resource in data["resources"]:
+        produced = resource.get("producedBy")
+        inputs = produced.get("inputFingerprints") if isinstance(produced, dict) else None
+        if ((resource.get("fingerprint") is not None and not understood(resource["fingerprint"]))
+                or (inputs is not None and not (isinstance(inputs, dict)
+                    and all(v is None or understood(v) for v in inputs.values())))):
+            found.append(resource["path"])
+    return sorted(found)
+
+
+def input_fingerprints(produced: dict) -> dict | None:
+    """A view's recorded inputFingerprints, or None when there are none it can
+    use (recorded before fingerprints, or in a form it does not understand)."""
+    inputs = produced.get("inputFingerprints")
+    return inputs if isinstance(inputs, dict) else None
 
 
 def raw_inputs(record: dict) -> list[str]:
@@ -263,8 +424,11 @@ def raw_inputs(record: dict) -> list[str]:
 
 # What useful-views itself writes in a record; anything else was put there by
 # hand or by a bad merge, and must never be used to name a file to delete.
-RECORD_NAME = re.compile(r"^[a-z0-9_]+$")
-RECORD_OUTPUT = re.compile(rf"^{re.escape(VIEWS)}/(?!\.\.?$)[^/\\]+$")
+RECORD_NAME = re.compile(r"^[a-z0-9_]+\Z")
+# A view is a .parquet file directly in useful-views/ (rule 4): never any
+# other file, and never a name with control characters.
+RECORD_OUTPUT = re.compile(rf"^{re.escape(VIEWS)}/[^/\\{UNSEEN}]+\.parquet\Z")
+RECORD_RAW = re.compile(rf"^{re.escape(RAW)}/[^{UNSEEN}]+\Z")
 
 # A Data Package name: lowercase letters, digits, '.', '_' and '-'.
 PACKAGE_NAME = re.compile(r"^[a-z0-9._-]+$")
@@ -275,26 +439,110 @@ def assemble(
     records: list[dict],
     views: dict[str, dict],
     raws: dict[str, dict],
-    name: object = None,
+    recorded: dict | None = None,
 ) -> dict:
     """Build datapackage.json from records and resource descriptions.
 
     `views` and `raws` map paths to resources. Only raw files read by a record
-    are kept; views are listed under their recipe, recipes in name order.
-    `name` is the package name already recorded: it is kept, so a clone in a
-    folder with another name writes the same file. Only when there is none
-    (or it is not a valid name) does the folder's name give one.
+    are kept. Recipes are listed in run order (see `run_order`), and views
+    under their recipe, so the file reads in the order the data is made.
+    `recorded` is datapackage.json as it was read. Its package name is kept,
+    so a clone in a folder with another name writes the same file; only when
+    there is none (or it is not a valid name) does the folder's name give one.
+    Any other field it has at the top level, perhaps from a newer version of
+    useful-views, is kept too.
     """
+    recorded = recorded or {}
+    name = recorded.get("name")
     if not (isinstance(name, str) and PACKAGE_NAME.fullmatch(name)):
         name = slug(root.name)
-    records = sorted(records, key=lambda r: r["name"])
+    by_name = {r["name"]: r for r in records}
+    records = [by_name[n] for n in run_order(by_name)]
     used_raw = sorted({p for r in records for p in raw_inputs(r)})
     resources = [raws[p] for p in used_raw if p in raws]
     for record in records:
         for path in sorted(record["outputs"]):
             if path in views:
-                resources.append(views[path])
-    return {"name": name, "resources": resources, "recipes": records}
+                resources.append(view_layout(views[path]))
+    return {**recorded, "name": name, "resources": resources, "recipes": records}
+
+
+def same_record(recorded: object, current: object) -> bool:
+    """Whether a recipe's recorded entry says what `current`, this version's
+    entry for it, says. Fields only the recorded one has, in the recipe or in
+    a step, are left out: a newer version of useful-views may record more,
+    and that alone never makes a recipe out of date. (A recipe run again gets
+    a fresh entry, without them: they described the run before.)"""
+    if isinstance(current, dict):
+        return isinstance(recorded, dict) and all(
+            k in recorded and same_record(recorded[k], v) for k, v in current.items())
+    if isinstance(current, list):
+        return (isinstance(recorded, list) and len(recorded) == len(current)
+                and all(same_record(r, c) for r, c in zip(recorded, current)))
+    return recorded == current
+
+
+def run_order(records: dict[str, dict]) -> list[str]:
+    """Recipe names, upstream first; recipes that do not depend on each other
+    in name order."""
+    makers = {out: name for name, r in records.items() for out in r["outputs"]}
+    upstream = {
+        name: sorted({makers[i] for i in r["inputs"] if i in makers} - {name}) for name, r in records.items()
+    }
+    order: list[str] = []
+    done: set[str] = set()
+
+    def visit(name: str, seen: tuple[str, ...] = ()) -> None:
+        if name in done or name in seen:
+            return
+        for up in upstream[name]:
+            visit(up, (*seen, name))
+        done.add(name)
+        order.append(name)
+
+    for name in sorted(records):
+        visit(name)
+    return order
+
+
+def fingerprints_differ(then: object, now: object) -> bool | None:
+    """Whether two fingerprints show different data: True or False, or None
+    when that is unknown: one is missing or null, or one is not a fingerprint
+    this version understands (a newer version's, or a hand edit; datahash1
+    and datahash2 are never compared)."""
+    if not (understood(then) and understood(now)):
+        return None
+    return then != now
+
+
+def differs_from_record(view: dict, now: str | None) -> bool:
+    """Whether a view's file, readable and with the fingerprint `now` (None:
+    no data hash, as a column is of a type the rules do not cover), certainly
+    holds other data than its record says. Under data hash version 1 a file
+    has a data hash or not by its column types alone, so a file with one and
+    a record without (or the other way round) cannot hold the same data. A
+    record with no fingerprint at all (made before fingerprints), or one this
+    version does not understand, shows nothing."""
+    recorded = view.get("fingerprint")
+    if fingerprints_differ(recorded, now):
+        return True
+    return "fingerprint" in view and (recorded is None) != (now is None) and (understood(recorded) or understood(now))
+
+
+def stale_inputs(data: dict) -> dict[str, list[str]]:
+    """For each recorded recipe, the views it read that were made again with
+    different data since it ran: the fingerprint its views recorded for them
+    no longer matches their own. Where that is unknown (fingerprints_differ),
+    it never counts as a change."""
+    views, _ = split_resources(data)
+    found: dict[str, set[str]] = {}
+    for view in views.values():
+        produced = view["producedBy"]
+        read = set(produced.get("inputs", []))
+        for path, then in (input_fingerprints(produced) or {}).items():
+            if path in read and fingerprints_differ(then, views.get(path, {}).get("fingerprint")):
+                found.setdefault(produced.get("recipe"), set()).add(path)
+    return {name: sorted(paths) for name, paths in found.items()}
 
 
 def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -305,8 +553,35 @@ def split_resources(data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     return views, raws
 
 
+WIDTH = 100
+
+
 def render_datapackage(data: dict) -> str:
-    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    """datapackage.json, laid out to be read: the package, its two lists and
+    each of their entries one item per line; inside an entry, anything that
+    fits on a line (a column, a list of paths) on one line."""
+    return _layout(data, 0, 0, 0) + "\n"
+
+
+def _layout(value: object, indent: int, depth: int, lead: int, fits: bool | None = None) -> str:
+    """`value` as JSON for a line that starts `indent` spaces and `lead`
+    characters (its key) in. Items of one list are all on one line each, or
+    all spread out, so they line up."""
+    flat = json.dumps(value, ensure_ascii=False)
+    if fits is None:
+        fits = indent + lead + len(flat) <= WIDTH
+    if not isinstance(value, (dict, list)) or not value or (depth > 2 and fits):
+        return flat
+    pad = " " * (indent + 2)
+    if isinstance(value, dict):
+        items = []
+        for key, item in value.items():
+            name = json.dumps(key, ensure_ascii=False) + ": "
+            items.append(pad + name + _layout(item, indent + 2, depth + 1, len(name)))
+        return "{\n" + ",\n".join(items) + "\n" + " " * indent + "}"
+    together = all(indent + 2 + len(json.dumps(item, ensure_ascii=False)) <= WIDTH for item in value)
+    items = [pad + _layout(item, indent + 2, depth + 1, 0, together) for item in value]
+    return "[\n" + ",\n".join(items) + "\n" + " " * indent + "]"
 
 
 # --- useful-views/README.md -------------------------------------------------
@@ -344,7 +619,7 @@ def render_catalog(data: dict) -> str:
         )
         fields = resource.get("schema", {}).get("fields", [])
         if fields:
-            rows = "\n".join(f"| {cell(f['name'])} | {cell(f['type'])} |" for f in fields)
+            rows = "\n".join(f"| {cell(f['name'])} | {cell(f.get('type', ''))} |" for f in fields)
             blocks.append("| Column | Type |\n|---|---|\n" + rows)
         else:
             blocks.append("No columns detected.")

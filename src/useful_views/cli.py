@@ -149,13 +149,15 @@ def _parser() -> argparse.ArgumentParser:
 
     add("check", "report the state of the project",
         "Report what is missing or out of place, every rule a recipe breaks (refused), and recipes that "
-        "sync would run. Changes nothing. Does not notice changes inside a step's code.")
+        "sync would run. Changes nothing. Does not notice changes inside a step's code or to a raw file "
+        "until that recipe runs again, nor view files on disk that no longer match their record (as after "
+        "a git pull): then use useful-views sync --all.")
 
     p = add("sync", "make the views match the recipe folders, like uv sync",
             "Make the views and datapackage.json match the recipe folders, like uv sync. Checks every recipe "
             "first and changes nothing if any would be refused. Then removes the records and view files of "
-            "deleted recipes and outputs, and runs, upstream first, every recipe that is new, changed or "
-            "missing its views, plus everything downstream of those.")
+            "deleted recipes and outputs, and runs, upstream first, every recipe that is new, changed, "
+            "missing its views or made from older data, then those downstream of them.")
     p.add_argument("--all", action="store_true",
                    help="run every recipe again, upstream first (sync does not notice edits to a step's code)")
 
@@ -164,8 +166,8 @@ def _parser() -> argparse.ArgumentParser:
             "description, inputs, outputs and steps, and the raw inputs the recipes read. Generated from "
             "datapackage.json, so the project must be in sync to write it. Commit it, like a lock file.")
     p.add_argument("--check", action="store_true",
-                   help="do not write; exit 1 if cookbook.json is missing or out of date, or a recipe changed "
-                        "without a sync. Needs no data, so it works in CI")
+                   help="do not write; exit 1 if cookbook.json is missing or out of date, or a recipe changed, or "
+                        "was made from an older view, without a sync. Needs no data, so it works in CI")
 
     add("rules", "list the rules a recipe must follow",
         "List the numbered rules. A refusal names the rule it broke.")
@@ -300,7 +302,7 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
     if args.command == "run":
         result = run(args.recipe)
         print(f"Ran recipes/{result.recipe}. Wrote {', '.join(result.outputs)}.")
-        print("Updated datapackage.json and useful-views/README.md.")
+        print("Recorded in datapackage.json and useful-views/README.md.")
         return EXIT_OK, {"ok": True, **result.to_dict()}
     if args.command == "check":
         findings = check()
@@ -342,9 +344,11 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
         if result.ran:
             print("Ran, in order: " + ", ".join(f"recipes/{n}" for n in result.ran) + ".")
         if not (result.removed or result.dropped or result.ran):
-            print("Everything is in sync: nothing to remove or run.")
+            # A note above can say what sync cannot tell; "in sync" would read as all clear.
+            print("Nothing to remove or run; read the warnings above." if result.warnings
+                  else "Everything is in sync: nothing to remove or run.")
         else:
-            print("Updated datapackage.json and useful-views/README.md.")
+            print("Recorded in datapackage.json and useful-views/README.md.")
         return EXIT_OK, {"ok": True, **result.to_dict()}
     if args.command == "cookbook":
         result = cookbook(check=args.check)
@@ -354,8 +358,12 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
                 print("cookbook.json is up to date.")
                 return EXIT_OK, data
             if result.findings:
-                print("The recipe folders no longer match their records in datapackage.json, so cookbook.json "
-                      "is out of date:")
+                if all(f.reason == "input-data-changed" for f in result.findings):
+                    print("datapackage.json shows recipes made from older versions of the views they read "
+                          "(a recipe ran again, and the recipes that read its views did not):")
+                else:
+                    print("The project is not in sync: recipe folders differ from their records in "
+                          "datapackage.json, or views were made from older data:")
                 for finding in result.findings:
                     print(f"  {finding.kind}: {finding.message.splitlines()[0]}")
                 if all(syncable(f) for f in result.findings):
