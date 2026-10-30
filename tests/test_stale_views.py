@@ -19,6 +19,12 @@ from conftest import add_raw_csv, write, write_recipe
 from test_record_fingerprints import DOWN, DOWN_STEP, UP, as_written_by_0_1_0, chain, views
 
 
+def ours(caught) -> list:
+    """The useful-views warnings among those caught: other code may warn too
+    (a file closed by the garbage collector, say)."""
+    return [w for w in caught if issubclass(w.category, uvs.UsefulViewsWarning)]
+
+
 def other_data(root, recipe: str = "up", view: str = UP, values=(7, 8, 9)) -> None:
     """Make a recipe's only step write other data (its record is unchanged)."""
     write(root, f"recipes/{recipe}/01_make.py",
@@ -34,7 +40,7 @@ def test_a_view_made_from_an_older_input_is_out_of_date(driver, project):
         result = uvs.run("up", root=project)
     # down's record shows it read up's old data, so a plain sync is enough.
     assert "recipes/down. Bring them up to date with: useful-views sync." in result.warnings[-1]
-    assert len(caught) == 1
+    assert len(ours(caught)) == 1
 
     out = driver.check()
     assert out.kinds == ["out-of-date"]
@@ -167,7 +173,7 @@ def test_run_names_a_reader_of_the_same_data_and_what_to_run(project):
         result = uvs.run("events", root=project)
     [message] = result.warnings
     assert "a time zone" in message and "run it too (useful-views run daily)" in message
-    assert len(caught) == 1
+    assert len(ours(caught)) == 1
     assert uvs.check(root=project) == []  # the records cannot show it: run said so
     uvs.run("daily", root=project)
     assert day(project) == [dt.date(2024, 2, 29)]
@@ -352,7 +358,7 @@ def test_run_tells_each_reader_what_changed(project):
     # reads_b read the same data: named, with what to run, as the records cannot show the rest.
     assert "with the same data, which recipes/reads_b reads" in same and "recipes/reads_a" not in same
     assert "useful-views run reads_b" in same
-    assert len(caught) == 2
+    assert len(ours(caught)) == 2
     assert {f.recipe for f in uvs.check(root=project)} == {"reads_a"}
 
 
@@ -391,7 +397,7 @@ def test_run_names_the_readers_after_a_pull(project):
         result = uvs.run("up", root=project)
     [message] = result.warnings
     assert "recipes/down" in message and "useful-views sync --all" in message and "same data" not in message
-    assert len(caught) == 1
+    assert len(ours(caught)) == 1
 
 
 LISTS = "# Write a list in each cell.\nimport pyarrow as pa, pyarrow.parquet as pq\n"

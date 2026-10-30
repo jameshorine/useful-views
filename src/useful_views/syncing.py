@@ -587,12 +587,17 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     def show(caught) -> None:  # show each warning once across the whole sync
         for w in caught:
             message = str(w.message)
-            if message not in collected:
-                collected.append(message)
-                try:
+            ours = issubclass(w.category, UsefulViewsWarning)
+            if ours and message in collected:
+                continue
+            try:
+                if ours:
+                    collected.append(message)
                     warn(message)
-                except Exception as exc:  # warnings made errors (python -W error): raised once sync is done
-                    deferred.append(exc)
+                else:  # another library's warning: passed on as it was, and not one of sync's
+                    warnings.warn_explicit(w.message, w.category, w.filename, w.lineno, source=w.source)
+            except Exception as exc:  # warnings made errors (python -W error): raised once sync is done
+                deferred.append(exc)
 
     locked = []
     for rel in plan.to_delete:
