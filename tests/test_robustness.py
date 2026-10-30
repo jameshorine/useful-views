@@ -70,6 +70,7 @@ def held(project):
     yield proc
     proc.stdin.close()
     proc.wait(timeout=30)
+    proc.stdout.close()
 
 
 def test_a_second_command_is_refused_while_another_changes_the_project(project, held):
@@ -147,6 +148,8 @@ def test_a_lock_left_by_a_killed_process_does_not_block(project):
     # a launcher that starts the real interpreter as a process of its own.
     os.kill(int(holder), getattr(signal, "SIGKILL", signal.SIGTERM))
     proc.wait(timeout=30)
+    proc.stdin.close()
+    proc.stdout.close()
     write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=["useful-views/a.parquet"])
     uvs.sync(root=project)
 
@@ -508,3 +511,22 @@ def test_deleting_a_read_only_work_folder_never_changes_what_a_symlink_points_to
 
 
 VIEW_A = "useful-views/a.parquet"
+
+
+def test_sync_passes_on_a_warning_from_other_code_as_it_was(project, monkeypatch):
+    """A warning from other code while a recipe runs keeps its own category,
+    and is not taken for one of sync's."""
+    import warnings
+
+    write_recipe(project, "a", inputs=[add_raw_csv(project)], outputs=[VIEW_A])
+    real = runner.run_step
+
+    def run_step(root, step):
+        warnings.warn("from another library", FutureWarning)
+        return real(root, step)
+
+    monkeypatch.setattr(runner, "run_step", run_step)
+    with pytest.warns(FutureWarning, match="from another library") as caught:
+        result = uvs.sync(root=project)
+    assert result.ran == ("a",) and result.warnings == ()
+    assert not [w for w in caught if issubclass(w.category, uvs.UsefulViewsWarning)]
