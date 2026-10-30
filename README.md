@@ -559,7 +559,7 @@ If you use useful-views in your research, please cite it. GitHub's
 or use:
 
 > Horine, J. (2026). *useful-views: Documented derived tables for
-> data projects* (Version 0.1.0) [Computer software].
+> data projects* (Version 0.2.0) [Computer software].
 > https://github.com/jameshorine/useful-views
 
 ```bibtex
@@ -567,7 +567,7 @@ or use:
   author  = {Horine, James},
   title   = {useful-views: Documented derived tables for data projects},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.2.0},
   url     = {https://github.com/jameshorine/useful-views},
   license = {MIT}
 }

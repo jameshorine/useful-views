@@ -596,6 +596,14 @@ def test_rule7_output_not_directly_inside_views(driver, project, rel):
     assert_refused(driver, project, "a", rule=7, path=TOML_A, mentions=[rel])
 
 
+def test_rule7_output_with_no_name_before_the_extension(driver, project):
+    """A view named only ".parquet" would be recorded, and then every command
+    would refuse the record: it is refused here instead."""
+    make_recipe(project, outputs=("useful-views/.parquet",), steps={"01_make.py": "# Write nothing.\n"})
+    out = assert_refused(driver, project, "a", rule=7, path=TOML_A, mentions=["useful-views/.parquet"])
+    assert "a name before the extension" in out.message, out.message
+
+
 def test_rule7_output_is_the_catalog(driver, project):
     make_recipe(project, outputs=("useful-views/README.md",), steps={"01_make.py": "# Write nothing.\n"})
     write(project, "work/a/leftover.txt", "old work file\n")

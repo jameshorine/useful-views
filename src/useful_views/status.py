@@ -23,9 +23,10 @@ KIND_MEANINGS = {
     "refused": "A recipe breaks a rule, so run and sync would refuse it. The finding names the rule.",
     "missing-input": "An input a recipe.toml declares is not on disk.",
     "never-run": "A recipe that has never run successfully.",
-    "out-of-date": "A recipe that sync would run again: its recipe.toml or steps changed since it last ran, its "
-                   "outputs changed, a view it reads was made again with different data since it ran, or a "
-                   "view it reads will be made again.",
+    "out-of-date": "A recipe whose record no longer matches: its recipe.toml or steps changed since it last ran, "
+                   "its outputs changed, a view it reads was made again with different data since it ran, or a "
+                   "view it reads will be made again. sync runs it, except that a view dropped from its outputs "
+                   "only has its record removed.",
     "missing-recipe-folder": "datapackage.json records a recipe whose folder is gone. sync removes the record.",
     "missing-view": "A recorded view whose file is missing.",
     "stale-cookbook": "cookbook.json does not match the recorded recipes. Update it with useful-views cookbook.",
@@ -89,7 +90,9 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
     Reports what is missing or out of place, every rule a recipe breaks that
     would stop `run` or `sync` (`refused`), and recipes that `sync` would run
     (`never-run`, `out-of-date`, `missing-view`). It does not notice changes
-    inside a step's code or to a file's contents.
+    inside a step's code or to a raw file until that recipe runs again, nor
+    view files on disk that no longer match their record (as after a
+    `git pull`).
 
     Args:
         root: The project folder. By default it is found by walking up from
@@ -188,8 +191,9 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                     f"{RECIPES}/{name}",
                     f"{RECIPES}/{name} is out of date: {', '.join(paths)} {'was' if len(paths) == 1 else 'were'} "
                     "made again with different data since it ran. Bring it up to date with: useful-views sync. If "
-                    "that data should not have changed, make sure the recipe that writes it sorts its rows: the same "
-                    "rows in another order have another fingerprint.",
+                    "that data should not have changed, make sure the recipe that writes it sorts its rows by columns "
+                    "that together identify each row (such as .sort(\"iso\", \"year\")): the same rows in another "
+                    "order have another fingerprint.",
                     recipe=name,
                     reason=reason,
                 )
@@ -208,18 +212,25 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
     def folder_present(name: str) -> bool:
         return exists_exact(project, f"{RECIPES}/{name}") and has_content(project / RECIPES / name)
 
+    makers = {out: n for n, r in plan.loaded.items() for out in r.outputs}
     for name, record in records.items():
         loaded = plan.loaded.get(name)
         if loaded is None or name in plan.reasons or name in reported:
             continue
         dropped = [o for o in record["outputs"] if o not in loaded.outputs]
         if dropped:
+            one = len(dropped) == 1
+            moved = {o: makers[o] for o in dropped if o in makers}
+            then = f"useful-views sync removes {'it' if one else 'them'} from the record"
+            if len(moved) < len(dropped):
+                then += f" and deletes {'the file' if one else ', '.join(o for o in dropped if o not in moved)}"
+            then += "".join(f"; {o} is now made by {RECIPES}/{m}" for o, m in moved.items())
             findings.append(
                 Finding(
                     "out-of-date",
                     f"{RECIPES}/{name}",
                     f"{RECIPES}/{name} no longer declares {', '.join(dropped)}, which its record in datapackage.json "
-                    "still lists. useful-views sync removes it from the record and deletes the file.",
+                    f"still lists. {then}.",
                     recipe=name,
                     reason="outputs-dropped",
                 )

@@ -306,6 +306,13 @@ def check_outputs(root: Path, recipe: Recipe, others: Others) -> None:
                 rule=7,
                 path=toml,
             )
+        if rel.rsplit("/", 1)[1] in VIEW_EXTENSIONS:
+            raise RecipeRefused(
+                f"In {toml}, output {rel!r} is not allowed: a view needs a name before the extension, like "
+                f"'{VIEWS}/my-view.parquet'.",
+                rule=7,
+                path=toml,
+            )
         if (root / rel).is_dir():
             raise RecipeRefused(
                 f"Output {rel!r} declared in {toml} is a folder on disk. A view must be a single file. "

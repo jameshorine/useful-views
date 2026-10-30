@@ -25,8 +25,8 @@ from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
 from .record import (
-    assemble, describe_view, fingerprints_differ, known_fingerprint, load_datapackage, retry, split_resources,
-    stale_inputs, write_generated,
+    assemble, describe_view, differs_from_record, fingerprints_differ, input_fingerprints, known_fingerprint,
+    load_datapackage, retry, run_order, split_resources, understood, write_generated,
 )
 from .rules import check_all
 
@@ -207,7 +207,8 @@ def rmtree(folder: Path) -> None:
             raise exc if isinstance(exc, BaseException) else exc[1]
         parent = os.path.dirname(path)
         os.chmod(parent, os.stat(parent).st_mode | stat.S_IWUSR | stat.S_IXUSR)
-        if not os.path.isdir(path):
+        # Never a symlink: chmod follows it, and would change a file elsewhere.
+        if not os.path.islink(path) and not os.path.isdir(path):
             os.chmod(path, os.lstat(path).st_mode | stat.S_IWRITE)
         func(path)
 
@@ -408,8 +409,12 @@ def _check_outputs(project: Path, name: str, loaded, inputs: dict[str, str | Non
             try:
                 fingerprint = known_fingerprint(project, rel, known)
                 views[rel] = describe_view(project, rel, name, list(loaded.inputs), fingerprint, inputs)
-            except (pa.ArrowException, OSError, DataHashError) as exc:
-                bad.append((rel, f"is not a readable parquet file ({exc})"))
+            except DataHashError as exc:  # its message names the file already
+                message = str(exc).strip()
+                bad.append((rel, message.removeprefix(f"{rel} ") if message.startswith(f"{rel} ")
+                            else f"could not be hashed: {message}"))
+            except (pa.ArrowException, OSError) as exc:
+                bad.append((rel, f"is not a readable parquet file ({str(exc).strip()})"))
     if bad:
         raise OutputError(
             f"All steps of {loaded.path} ran, but its declared outputs are not right:\n"
@@ -423,18 +428,48 @@ def _check_outputs(project: Path, name: str, loaded, inputs: dict[str, str | Non
     return views
 
 
-def _input_fingerprints(project: Path, loaded, known: dict) -> dict[str, str | None]:
+def _input_fingerprints(project: Path, loaded, known: dict) -> tuple[dict[str, str | None], set[str]]:
     """The fingerprint of each view the recipe reads, in the order its
-    recipe.toml lists them; None for one that cannot be hashed (a step
-    reading a file that cannot be read says so itself)."""
+    recipe.toml lists them (None when it has no data hash), and the views
+    that could not be read, None too (a step reading one says so itself)."""
     found: dict[str, str | None] = {}
+    unreadable: set[str] = set()
     for rel in loaded.inputs:
         if rel.startswith(f"{VIEWS}/"):
             try:
                 found[rel] = known_fingerprint(project, rel, known)
             except (DataHashError, OSError):
                 found[rel] = None
-    return found
+                unreadable.add(rel)
+    return found, unreadable
+
+
+def _check_inputs_are_recorded(name: str, inputs: dict[str, str | None], unreadable: set[str], data: dict,
+                               in_sync: bool) -> None:
+    """Refuse, before anything changes, to run a recipe on a view whose file
+    holds other data than its record says (left by a git pull, a branch
+    switch or an edit by hand): the recipe that makes it must run first."""
+    views, _ = split_resources(data)
+    wrong = {rel: views[rel]["producedBy"].get("recipe") for rel, now in inputs.items()
+             if rel in views and rel not in unreadable and differs_from_record(views[rel], now)}
+    if wrong:
+        unchanged = "" if in_sync else " Nothing was changed."
+        raise ProjectError(f"{RECIPES}/{name} reads {pulled_views(wrong, data)}{unchanged}", recipe=name)
+
+
+def pulled_views(wrong: dict[str, str], data: dict) -> str:
+    """The views whose files hold other data than their records, by maker, and
+    what to run: sync --all first, as other views were likely left too."""
+    listed = ", ".join(f"{rel} (made by {RECIPES}/{maker})" for rel, maker in sorted(wrong.items()))
+    one = len(wrong) == 1
+    makers = [m for m in run_order({r["name"]: r for r in data["recipes"]}) if m in set(wrong.values())]
+    first = " then ".join(f"useful-views run {m}" for m in makers)
+    return (
+        f"{listed}, but {'its file' if one else 'their files'} on disk {'holds' if one else 'hold'} other data "
+        f"than datapackage.json records: probably left by a git pull, a branch switch or an edit by hand, along "
+        f"with any other views from before it. Make every view again with: useful-views sync --all (or make "
+        f"{'it' if one else 'them'} first: {first})."
+    )
 
 
 def _watched(project: Path, loaded, others, data: dict) -> dict[str, tuple[int, int] | None]:
@@ -468,20 +503,109 @@ def _changed(project: Path, before: dict, loaded, others, data: dict, collected:
              "the original file, and write in-between files to work/ instead.", collected)
     if views:
         warn(f"{loaded.path} changed {', '.join(views)}, which it does not declare as outputs, while it ran. "
-             "Each view must be written only by the recipe that declares it; run useful-views sync --all to "
-             "make them again.", collected)
+             f"Each view must be written only by the recipe that declares it: change the steps of {loaded.path} "
+             "so they write only the outputs in its recipe.toml, then run useful-views sync --all to make the "
+             "others again.", collected)
 
 
-def _downstream(others, outputs: tuple[str, ...], data: dict) -> list[str]:
-    """Recorded recipes that read these views, directly or through others."""
-    found: set[str] = set()
-    frontier = set(outputs)
-    while frontier:
-        readers = {n for n, (ins, _) in others.declared.items() if n not in found and frontier & set(ins)}
-        found |= readers
-        frontier = {o for n in readers for o in others.declared[n][1]}
+def _replaced_other_data(project: Path, loaded, others, data: dict, known: dict) -> set[str]:
+    """This recipe's views whose files on disk, about to be replaced, hold
+    other data than their records say (left by a git pull or a branch
+    switch): the recipes that read them may have been made from those files,
+    whatever the new views hold. Checked only when recorded recipes read them."""
     recorded = {r["name"] for r in data["recipes"]}
-    return sorted(found & recorded)
+    if not any(set(ins) & set(loaded.outputs) for n, (ins, _) in others.declared.items() if n in recorded):
+        return set()
+    views, _ = split_resources(data)
+    found = set()
+    for rel in loaded.outputs:
+        if rel in views and exists_exact(project, rel) and (project / rel).is_file():
+            try:
+                if differs_from_record(views[rel], known_fingerprint(project, rel, known)):
+                    found.add(rel)
+            except (DataHashError, OSError):
+                pass  # unreadable: it is replaced, and says nothing of what was read
+    return found
+
+
+def _downstream_warnings(project: Path, name: str, loaded, others, views: dict, written: dict,
+                         replaced_other: set[str]) -> list[str]:
+    """What to tell about the recorded recipes that read this recipe's views,
+    each judged by its own record. One that read other data than the views
+    hold now is out of date, and sync runs it. One that read the same data is
+    named too: a step can see what a data hash leaves out (a time zone's name,
+    a column's storage type or unit, its categories), so the same data hash does not show it would give the
+    same results. One whose record cannot show which, or that read a view
+    whose file on disk held other data than its record, is named with the
+    reason.
+    A reader check already reports (its recipe.toml reads a view its record
+    does not, or its views are missing) is left to check and sync."""
+    made, _ = split_resources(written)
+    records = {r["name"]: r for r in written["recipes"]}
+    changed, same, unknown, why = [], [], [], []
+    for reader, (ins, _) in sorted(others.declared.items()):
+        read = [o for o in loaded.outputs if o in ins]
+        record = records.get(reader)
+        if not read or record is None or any(o not in record["inputs"] for o in read):
+            continue
+        own = [made.get(out) for out in record["outputs"]]
+        if not own or any(v is None or not exists_exact(project, v["path"]) for v in own):
+            continue
+        took = input_fingerprints(own[0]["producedBy"]) or {}
+        differ = [fingerprints_differ(took.get(o), views[o]["fingerprint"]) for o in read]
+        if any(differ):
+            changed.append(reader)
+        elif set(read) & replaced_other:
+            unknown.append(reader)
+            why.append("the file it replaced held other data than datapackage.json records (as after a git pull "
+                       "or a branch switch), so their views may be older than their records")
+        elif all(d is False for d in differ):
+            same.append(reader)
+        else:
+            unknown.append(reader)
+            for o in read:
+                if views[o]["fingerprint"] is None:
+                    why.append("a view it made has no data hash (a column of a type data hash version 1 "
+                               "does not cover)")
+                elif took.get(o) is not None and not understood(took[o]):
+                    why.append("their records hold fingerprints this version of useful-views does not understand "
+                               "(if a co-author uses a newer version, upgrade useful-views)")
+                elif took.get(o) is None:
+                    why.append("their records have no fingerprints to show it (recorded by another version of "
+                               "useful-views, or when that view had no data hash)")
+
+    def listing(names: list[str]) -> str:
+        return ", ".join(f"{RECIPES}/{n}" for n in names)
+
+    def run_them(names: list[str]) -> str:
+        if len(names) == 1:
+            return f"run it too (useful-views run {names[0]})"
+        return "run each of them too (useful-views run <recipe>, upstream first)"
+
+    messages = []
+    if changed:
+        messages.append(
+            f"{RECIPES}/{name} made its views again with different data, so the recipes that read them are out of "
+            f"date: {listing(changed)}. Bring them up to date with: useful-views sync. (If that data should not "
+            "have changed, make sure the steps sort the rows they write by columns that together identify each "
+            "row: the same rows in another order have another fingerprint.)"
+        )
+    if unknown:
+        messages.append(
+            f"{RECIPES}/{name} made its views again, so the recipes that read them may have been made from the old "
+            f"ones: {listing(unknown)}. sync cannot tell, because {'; '.join(dict.fromkeys(why))}. Bring them up to "
+            "date with: useful-views sync --all (or run each of them, upstream first)."
+        )
+    if same:
+        one = len(same) == 1
+        messages.append(
+            f"{RECIPES}/{name} made its views again with the same data, which {listing(same)} "
+            f"{'reads' if one else 'read'}. If what changed is how that data is stored (a time zone's name, a "
+            "column's storage type or unit, its categories, or the library that writes it), "
+            f"{'it' if one else 'they'} may now give other results, which sync does not notice: {run_them(same)}, "
+            "or use useful-views sync --all."
+        )
+    return messages
 
 
 def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
@@ -493,9 +617,12 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
     with this Python, its output shown as it runs), every declared view must
     have been written, and the run is recorded in `datapackage.json` and
     `useful-views/README.md`. Other recipes' records are not changed, and no
-    other recipe is run: if other recipes read this one's views, a warning
-    names them, because their views were made from the old ones (run
-    `useful-views sync --all`, or run each of them, upstream first).
+    other recipe is run. If other recipes read this one's views, a warning
+    names them: when the data changed, `useful-views sync` brings them up to
+    date; when it came out the same, they may still give other results (a
+    step can see what a data hash leaves out, such as a time zone), and the
+    warning says what to run. When the records cannot show which, it says
+    why, and to use `useful-views sync --all`.
 
     Args:
         recipe: The recipe's name, as in `"pwt_panel"` or `"recipes/pwt_panel/"`.
@@ -511,8 +638,11 @@ def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
             were removed.
         OutputError: A declared view was missing, empty or unreadable after
             the steps ran; nothing was recorded.
-        ProjectError: Another useful-views command is changing the project,
-            or a file could not be written or deleted.
+        ProjectError: Another useful-views command is changing the project;
+            a file could not be written or deleted; or a view the recipe reads
+            holds other data than datapackage.json records (left by a git pull
+            or a branch switch), in which case nothing changed and the message
+            says what to run.
         ProjectNotFound: No project was found.
     """
     project = find_root(root)
@@ -541,8 +671,14 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         exc.recipe = exc.recipe or name
         raise
 
-    # The fingerprints of the views this recipe reads, as they are now.
-    inputs = _input_fingerprints(project, loaded, known)
+    # The fingerprints of the views this recipe reads, as they are now; each
+    # must be the view its record describes, or the run would record reading
+    # data that no recipe made.
+    inputs, unreadable = _input_fingerprints(project, loaded, known)
+    _check_inputs_are_recorded(name, inputs, unreadable, data, in_sync)
+    # Whether this recipe's views on disk are the recorded ones, before they
+    # are replaced: if not, their readers' views may be older than their records.
+    replaced_other = _replaced_other_data(project, loaded, others, data, known) if not in_sync else set()
 
     # 1. Clear the old views and work files: a leftover can never pass for a fresh result.
     _remove_outputs(project, loaded.outputs, again)
@@ -569,7 +705,7 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         all_views = {p: r for p, r in old_views.items() if r["producedBy"].get("recipe") != name}
         all_views.update(views)
         all_raws = {**old_raws, **raw_described}
-        written = assemble(project, records, all_views, all_raws, data.get("name"))
+        written = assemble(project, records, all_views, all_raws, data)
         write_generated(project, written)
     except BaseException:
         # On any failure from here on, a failed run leaves its views absent.
@@ -585,24 +721,6 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         note = stale_warning(project)
         if note:
             warn(note, collected)
-        stale = _downstream(others, loaded.outputs, data)
-        # Views whose fingerprint shows the same data as before leave their readers up to date.
-        same = all(fingerprints_differ(old_views.get(o, {}).get("fingerprint"), views[o]["fingerprint"]) is False
-                   for o in loaded.outputs)
-        if stale and not same:
-            listed = ", ".join(f"{RECIPES}/{n}" for n in stale)
-            recorded = {r["name"] for r in data["recipes"]}
-            readers = {n for n, (ins, _) in others.declared.items() if set(ins) & set(loaded.outputs)} & recorded
-            if readers <= set(stale_inputs(written)):
-                # Each reader's record shows it read the old data, so sync sees it too.
-                warn(f"{RECIPES}/{name} made its views again with different data, so the recipes downstream of it "
-                     f"are out of date: {listed}. Bring them up to date with: useful-views sync", collected)
-            else:
-                warn(
-                    f"{RECIPES}/{name} made its views again, so the views of the recipes that read them were made "
-                    f"from the old ones: {listed}. Their records have no fingerprints to show it, so sync does not "
-                    "notice this by itself. Bring them up to date with: useful-views sync --all (or run each of "
-                    "them, upstream first).",
-                    collected,
-                )
+        for message in _downstream_warnings(project, name, loaded, others, views, written, replaced_other):
+            warn(message, collected)
     return RunResult(recipe=name, outputs=loaded.outputs, warnings=tuple(collected))

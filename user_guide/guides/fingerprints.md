@@ -119,7 +119,7 @@ file hash equal: False
 data hash equal: False
 ```
 
-One value out of eight changed, and both fingerprints changed. Either one
+One value changed, and both fingerprints changed. Either one
 would tell useful-views that a view made from the old readings is now stale.
 
 ## 4. The same rows, in another order
@@ -190,7 +190,7 @@ whichever library wrote the file.
 
 | What happened | File hash | Data hash |
 |---|---|---|
-| saved by another library, or a newer version of one | changes | **same** |
+| saved by another library, or a newer version of one | usually changes | **same** |
 | saved again by the same library | same | same |
 | a value corrected | changes | changes |
 | the same rows in another order | changes | changes |

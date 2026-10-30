@@ -4,7 +4,7 @@
 
 Run it by hand, on one computer, plugged in and with little else running,
 when the hashing code changes. The largest view is 10 million rows by 256
-columns (about 20 GB on disk, written to a temporary folder and deleted
+columns (about 15 GB on disk, written to a temporary folder and deleted
 straight after), so a run takes a while. It writes, next to the "Data hash
 rules" page:
 

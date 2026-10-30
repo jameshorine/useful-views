@@ -5,8 +5,9 @@ title: "Stale views and fingerprints"
 A view is **stale** when the data or code it was made from has changed since,
 but the view has not been made again. A stale view looks exactly like a
 current one: same file name, same columns, plausible numbers. This page
-explains how a view goes stale, what useful-views catches today, what it does
-not, and what is planned to close the gap: fingerprints.
+explains how a view goes stale, what useful-views catches today with
+fingerprints (new in version 0.2.0), what it does not catch yet, and what
+is planned.
 
 ## Why this matters
 
@@ -18,12 +19,17 @@ not, and what is planned to close the gap: fingerprints.
   recipe, and moves on, leaving every recipe downstream of it out of date.
 
 The record in `datapackage.json` says which recipe made each view, from
-which inputs, with which steps. It does not yet say *what those files
-contained* when the view was made. That is the gap.
+which inputs, with which steps. Since version 0.2.0 it also holds a
+**fingerprint** of each view, and of each view a recipe read: a short code
+computed from the view's contents (its [data hash](../reference/data-hash.md)),
+the same for the same data and different when the data changes. It does
+not yet hold fingerprints of raw files or of steps' code, and the views on
+disk are compared with the record only when a recipe is about to read
+them; `check` never looks. That is the gap that remains.
 
 ## An example: the PWT project
 
-The [quickstart](../quickstart.md) builds two recipes: `pwt_panel` turns the
+The example project in the [quickstart](../quickstart.md) has two recipes: `pwt_panel` turns the
 raw Penn World Table extract into a panel, and `gdp_per_capita` reads that
 panel and divides GDP by population. In 2019, the panel gives the United
 States a population of 337.79 million and GDP of US$23.2 trillion, so
@@ -32,7 +38,7 @@ States a population of 337.79 million and GDP of US$23.2 trillion, so
 ### A fixed step
 
 Suppose a step in `pwt_panel` had a units mistake: it multiplied population
-by 1,000, so `gdp-per-capita.parquet` said Americans earned US$69 a year. You
+by 1,000, so `gdp-per-capita.parquet` gave GDP per person of US$69 a year. You
 find the mistake, fix the step and run the recipe:
 
 ```sh
@@ -66,6 +72,12 @@ and its record in `datapackage.json` arrived together and match, so `sync`
 does nothing, while your `gdp-per-capita.parquet`, which is not in git, still
 comes from the old code.
 
+`check` does not look inside the files on disk, so it says
+`No problems found.` useful-views notices only when it is about to rely on
+the old file: `run` and `sync` stop before a recipe reads a view whose file
+holds other data than `datapackage.json` records, and name the recipe that
+makes it.
+
 ## What to do today
 
 The simplest answer, after any of these, is to make every view again:
@@ -76,46 +88,51 @@ useful-views sync --all
 
 | When you... | Do this |
 |---|---|
-| fix or change the code inside a step, or a helper module | `useful-views run` that recipe, then `useful-views sync` (or `useful-views sync --all`) |
-| replace a file in `raw/` under the same name | `useful-views sync --all`, or give the new version a new name and update `inputs`, which `sync` notices |
+| fix or change the code inside a step, or a helper module | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`) |
+| replace a file in `raw/` under the same name | `useful-views sync --all`, or give the new version a new name, and change the path in `inputs` and in the step that reads it, which `sync` notices |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |
 
 What useful-views does catch today:
 
 - an edited `recipe.toml`, a step added, removed or renamed, and a step's
   changed top comment: `check` reports the recipe as out of date, and `sync`
-  runs it and everything downstream of it;
+  runs it, then every recipe downstream of it;
 - a view made from an older version of another: the fingerprints in
   `datapackage.json` show it (`input-data-changed`), so `check` reports it,
   `sync` runs its recipe, and `cookbook --check` fails, even in CI without
   the data;
 - after `run`, a warning naming the recipes that read the views it just made
-  again, when their data changed. A recipe run again that makes the same
-  data leaves the recipes downstream of it up to date, and `sync` skips
-  them;
-- when `sync` stops partway, it removes the views it would have left stale,
-  so the next `sync` makes them again.
+  again: out of date when the data changed (`sync` runs them); when it came
+  out the same, to run them too if what changed is how the data is stored
+  (a time zone's name, a column's storage type or unit, its categories),
+  which a data hash does not show; and when the records cannot show which,
+  why, and to use `useful-views sync --all`;
+- a `sync` that stops partway, however it stops, leaves no view that looks
+  current but is not: before it runs anything, it removes the views it will
+  make again, so the next `sync` makes them;
+- a view on disk that holds other data than its record (left by a pull or a
+  branch switch), when a recipe is about to read it: `run` and `sync` stop
+  and name the recipe to run first. Nothing changes until then.
 
-## What is planned: fingerprints
+## Fingerprints: what is done and what is planned
 
-A **fingerprint** is a short code computed from a file's contents, such as
-its SHA-256 hash. The same contents always give the same fingerprint, and
-any change, even one byte, gives a different one. If useful-views records the
-fingerprints of everything a view was made from, it can recompute them later
-and know, rather than guess, whether the view is current. This is planned
-in stages.
+If useful-views records the fingerprints of everything a view was made from,
+it can compare them later and know, rather than guess, whether the view is
+current. This is being built in stages; the views' data hashes, part of
+stage 2, came first, in version 0.2.0.
 
 **1. Inputs and code.** The fingerprints of each recipe's raw inputs, its
 `recipe.toml`, its step files and the helper modules beside them, recorded
-when the recipe runs. That alone catches all three cases above: `check` and
-`sync` would see that the panel, the raw file or the step changed, and run
-what is out of date. Because the fingerprints of raw files would be
+when the recipe runs. With the views' fingerprints already recorded, that
+would catch all three cases above, and notice a changed raw file or step
+before the recipe runs again. Because the fingerprints of raw files would be
 committed, a co-author's `check` could also say that their copy of a raw file
 is not the one the views were made from. Large files are hashed again only
 when their size or modification time changed, as git does.
 
-**2. Views, two ways.** A view gets two fingerprints, because "the same view"
-can mean two things:
+**2. Views, two ways.** A view can have two fingerprints, because "the same
+view" can mean two things. The data hash is recorded since version 0.2.0;
+the file hash is planned.
 
 | Fingerprint | Computed from | Answers |
 |---|---|---|
@@ -125,7 +142,8 @@ can mean two things:
 The file hash alone is not enough, because a parquet file's bytes depend on
 the library that wrote it, not only on the data. The sensor readings from
 [Try it: two fingerprints](../guides/fingerprints.md), saved once with polars
-and once with pyarrow:
+and once with pyarrow (polars 2.0 and pyarrow 26; other versions give other
+file hashes):
 
 | | Written by polars | Written by pyarrow |
 |---|---|---|
@@ -134,7 +152,13 @@ and once with pyarrow:
 | Data hash | `76c92a8b…` | `76c92a8b…` |
 
 So the file hash is exact on one computer, and the data hash is what a
-co-author, a reviewer or a CI job can compare. To see both for yourself,
+co-author, a reviewer or a CI job can compare. Neither shows that a recipe
+reading the view would give the same results: a step can see what the data
+hash leaves out, such as a time zone's name, a column's storage type or
+unit, or its categories. So `sync` acts on a fingerprint that changed, and
+never skips a recipe because one stayed the same. After `run` on its own,
+the records show only the readers whose input data changed; `run` names
+the others. To see both for yourself,
 including how row order and the last digit of a number affect them, work
 through [Try it: two fingerprints](../guides/fingerprints.md).
 `uvs.data_hash()` computes the data hash of any parquet file, by the
@@ -142,8 +166,9 @@ through [Try it: two fingerprints](../guides/fingerprints.md).
 each view's data hash, and those of the views each recipe read, in
 `datapackage.json` (see [Fingerprints](records.md#fingerprints)), and
 `check` and `sync` compare them to find a view made from an older version
-of another. Comparing each view's file on disk with its record, which
-catches a `git pull`, is next.
+of another. `run` and `sync` also compare a view's file on disk with its
+record before a recipe reads it; having `check` do so too, which would catch
+a `git pull` at once, is next.
 
 **3. Deterministic results.** With both, useful-views could also check that
 a recipe gives the same data from the same inputs and code. When it does

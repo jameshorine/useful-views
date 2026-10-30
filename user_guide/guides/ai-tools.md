@@ -42,13 +42,18 @@ read files, and `cookbook`, which writes only `cookbook.json`.
   forward slashes, and with no wildcards.
 - To build: `useful-views sync`. It refuses before changing anything if any
   recipe breaks a rule, and lists every problem at once.
-- After editing the code inside a step, after a `git pull` or a branch
-  switch, or after replacing a raw file under the same name, `sync` alone
-  does not notice: use `useful-views sync --all`.
+- After editing the code inside a step of recipe X, run
+  `useful-views run X`, then what its warnings say to run: `useful-views
+  sync` when X's data changed, the recipes it names when the data came out
+  the same, `useful-views sync --all` when it cannot tell. After a `git pull` or a branch switch, or after
+  replacing a raw file under the same name, `sync` alone does not notice:
+  use `useful-views sync --all`.
 - After `run <recipe>`, if its views came out different, the recipes that
   read them are out of date: `run` warns and names them, `check` reports
-  them (`out-of-date`, reason `input-data-changed`), and `sync` runs them.
-  Prefer `sync`.
+  them (`out-of-date`, reason `input-data-changed`), and `sync` runs them
+  (prefer it to running each). If they came out the same, `run` still names
+  them, and `sync` does not run them: run each of them if what changed is
+  how the data is stored.
 - Run one command at a time. A second `run`, `sync` or `cookbook` started
   while another is working on the same project is refused ("another
   useful-views command is already changing this project"); wait, then run
@@ -62,16 +67,20 @@ read files, and `cookbook`, which writes only `cookbook.json`.
 Every command takes `--json`, including `--help` and `--version`. Standard
 output then carries exactly one JSON document, on success and on failure;
 everything else, including the steps' own output, goes to standard error.
-Every document has `ok` and a `warnings` list.
+Every document has `ok` and a `warnings` list. Read `warnings` even when
+`ok` is true: a note there can matter (a recipe `check` cannot judge, say),
+and most end with the command to run.
 
 ```sh
 useful-views check --json
-# {"ok": false, "findings": [{"kind": "out-of-date", "path": "recipes/b", "message": ...,
-#   "rule": null, "recipe": "b", "reason": "upstream"}], "warnings": []}
+# {"ok": false, "findings": [
+#   {"kind": "out-of-date", "path": "recipes/a", "message": ..., "rule": null, "recipe": "a", "reason": "changed"},
+#   {"kind": "out-of-date", "path": "recipes/b", "message": ..., "rule": null, "recipe": "b", "reason": "upstream"}],
+#  "warnings": []}
 
 useful-views sync --json
 # {"ok": true, "removed": [], "dropped": [], "deleted": [], "ran": ["a", "b"],
-#  "reasons": {"a": "changed", "b": "upstream"}, "skipped": [], "warnings": []}
+#  "reasons": {"a": "changed", "b": "upstream"}, "warnings": []}
 
 useful-views run pwt_panel --json
 # on failure:
