@@ -9,7 +9,7 @@ recipe, and records that recipe.
 
 ```text
 recipes/pwt_panel/
-├── recipe.toml                 # description, inputs, steps, outputs
+├── recipe.toml                 # description, inputs, outputs, steps
 ├── 01_reshape_long.py          # the steps, run in numeric order
 ├── 02_keep_core_variables.py
 └── 03_pivot_to_panel.py

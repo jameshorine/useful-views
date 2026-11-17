@@ -46,7 +46,7 @@ RULES: dict[int, Rule] = _Rules(
             2,
             "Steps are numbered and listed",
             "The step files, named NN_name.py, are exactly the files recipe.toml lists under [[steps]], in the "
-            "order of their numbers, and no two steps share a number.",
+            "order of their numbers; no two steps share a number; and each can be read and is saved as UTF-8.",
         ),
         Rule(
             3,

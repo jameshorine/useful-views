@@ -136,8 +136,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="?", default=None, help="folder to create (default: <name>-example)")
 
     p = add("new-recipe", "create recipes/<name>/ from a template",
-            "Create recipes/NAME/ with a template recipe.toml and a stub step, 01_first_step.py. Both say "
-            "TODO and are refused until you fill them in.")
+            "Create recipes/NAME/ with a template recipe.toml, which lists one step, and that step's stub "
+            "file, 01_first_step.py. The recipe is refused until you fill in recipe.toml: its inputs and "
+            "outputs, and one sentence in place of each TODO description.")
     p.add_argument("name", help="the recipe's name: lowercase letters, digits and underscores, like pwt_panel")
 
     p = add("run", "run one recipe and record what it produced",

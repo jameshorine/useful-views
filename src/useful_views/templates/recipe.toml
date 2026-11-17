@@ -18,7 +18,9 @@ outputs = []
 # The steps, in the order they run: a [[steps]] block for each step file in
 # this folder (named 01_..., 02_..., and so on). Keep them at the end of the
 # file: TOML puts every line below a [[steps]] header into that step. For a
-# description with double quotes in it, use triple quotes: """..."""
+# description over several lines or with double quotes in it, use triple
+# quotes: """...""". A backslash starts an escape: write \\, or use triple
+# single quotes, '''...''', which keep it as written.
 [[steps]]
 file = "01_first_step.py"
 description = "TODO: one sentence saying what this step does."

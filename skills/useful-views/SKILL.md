@@ -68,7 +68,9 @@ folder, in numeric order (rule 2): when you add, rename or remove a step
 file, change its block too. Keep them at the end of `recipe.toml`, since
 TOML puts every line below a `[[steps]]` header into that step. Use triple
 quotes, `"""..."""`, for a description over several lines or with double
-quotes in it. Comments in a step file are not read. Each step runs from the
+quotes in it. A backslash starts an escape: write `\\`, or use triple single
+quotes, `'''...'''`, which keep it as written. Save step files as UTF-8
+(also rule 2); comments in them are not read. Each step runs from the
 project root, reads and writes files by the same path strings as in
 `recipe.toml`, and passes data to later steps only through `work/<name>/`.
 

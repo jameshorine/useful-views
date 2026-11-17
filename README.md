@@ -69,7 +69,7 @@ my-data-project/
 │
 ├── recipes/                      # written by humans, AI tools, or both
 │   ├── recipe_01/                # one folder = one recipe, at least 1 step, maybe more!
-│   │   ├── recipe.toml           # description, inputs, steps (each with its description), outputs
+│   │   ├── recipe.toml           # description, inputs, outputs, steps (each with its description)
 │   │   ├── 01_first_step.py      # one file = at least one step, listed in recipe.toml
 │   │   ├── 02_second_step.py
 │   │   └── 03_third_step.py
@@ -152,8 +152,8 @@ not a work file.
 ## Writing a recipe
 
 A recipe folder holds one `recipe.toml` and at least one step file.
-`recipe.toml` is the whole recipe: its inputs, its steps with what each
-does, and its outputs.
+`recipe.toml` describes the whole recipe: its inputs, its outputs, and its
+steps in the order they run, with what each does.
 
 `recipes/pwt_panel/recipe.toml`:
 
@@ -215,9 +215,11 @@ In detail:
   says TODO and is refused until you fill it in.
 - **`recipe.toml`** has four keys. `description` is one sentence, required.
   `inputs` and `outputs` are lists of at least one path each. `steps` is a
-  `[[steps]]` block for each step file, each with `file` and `description`;
-  keep them at the end of the file, since TOML puts every line below a
-  `[[steps]]` header into that step. Other keys are ignored with a warning.
+  `[[steps]]` block for each step file, with `file`, the file's bare name in
+  the recipe folder (such as `01_reshape_long.py`, not a path), and
+  `description`; keep them at the end of the file, since TOML puts every line
+  below a `[[steps]]` header into that step. Other keys, at the top or inside
+  a `[[steps]]` block, are ignored with a warning.
 - **Inputs**: a file anywhere under `raw/`, or a view directly inside
   `useful-views/` that another recipe makes and has already made
   successfully.
@@ -242,8 +244,12 @@ In detail:
 - **Step description**: the `description` in the step's `[[steps]]` block,
   joined into one line, so a long one can be written over several lines in
   triple quotes (`"""..."""`), as can one with double quotes in it. It must
-  not start with TODO. useful-views does not read the step file's comments,
-  so a step file may start with anything.
+  not be empty or start with TODO. A backslash starts an escape: write `\\`,
+  or use triple single quotes (`'''...'''`), which keep the text as written.
+  useful-views does not read the step file's comments, so a step file may
+  start with anything, but it must be saved as UTF-8 (a byte-order mark and
+  Windows line endings are fine); a step file that cannot be read as UTF-8 is
+  refused under rule 2 before anything on disk changes.
 - **Steps** run one at a time as separate processes, with the project root as
   the working directory, using the same Python interpreter as useful-views,
   and with `work/<recipe>/` already created and empty. A step gets no
@@ -380,10 +386,11 @@ recipe runs again.
 1. `recipe.toml` is missing or unreadable, lacks `description`, `inputs`,
    `outputs` or a `[[steps]]` block, has an empty list, or lists a path or
    a step file twice; a `[[steps]]` block lacks the file name of a step or a
-   description; or a description starts with TODO.
+   description, or gives a path instead of the bare file name; or a
+   description starts with TODO.
 2. The step files (`NN_name.py`) are not exactly the files `recipe.toml`
-   lists under `[[steps]]`, in the order of their numbers; or two steps
-   share a number.
+   lists under `[[steps]]`, in the order of their numbers; two steps share a
+   number; or a step file cannot be read or is not saved as UTF-8.
 3. A file in the recipe folder is named like a step but is an R, notebook,
    Quarto, Julia or Stata file (`.R`, `.Rmd`, `.ipynb`, `.qmd`, `.jl`,
    `.do`): steps must be `.py` files.
@@ -533,10 +540,13 @@ that they are yours. So no file has two authors at the same time.
 `useful-views` is a fixed project structure, not a general workflow engine. Every
 derived table lives in `useful-views/` and records the recipe, inputs and steps
 that made it. Recipes are plain folders of numbered Python files, so you can
-understand a project by reading it: no rule language, no pipeline definition
-file, no configuration layer. The same structure makes a project easy for AI
-coding tools to work in. They get an `AGENTS.md`, `--json` output and numbered
-rules they can check against.
+understand a project by reading it: no rule language and no configuration
+layer. There is no official pipeline definition, but a workflow definition is
+provided by each recipe's `recipe.toml`, which lists its inputs, its steps in
+the order they run with what each does, and its outputs; the order of the
+recipes follows from what each one reads and makes. The same structure makes a
+project easy for AI coding tools to work in. They get an `AGENTS.md`, `--json`
+output and numbered rules they can check against.
 
 - **Snakemake** is a full workflow engine with its own rule language, wildcards
   and cluster and cloud execution. Choose it for large or highly parallel

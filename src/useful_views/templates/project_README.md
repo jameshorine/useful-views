@@ -67,12 +67,14 @@ variable and year."""
   step does to the data. Keep these blocks at the end of the file: TOML
   puts every line below a `[[steps]]` header into that step. Use triple
   quotes, `"""..."""`, for a description that runs over several lines or
-  has double quotes in it.
+  has double quotes in it. A backslash starts an escape: write `\\`, or use
+  triple single quotes, `'''...'''`, which keep it as written.
 
 Each step is a file named `NN_name.py`: two digits, an underscore and a
 name, like `01_reshape_long.py`. Steps run in numeric order. Every step
 file is listed in `recipe.toml`, so to add, rename or remove a step, change
-both the file and its `[[steps]]` block. The step file itself is just code:
+both the file and its `[[steps]]` block. The step file itself is just code,
+saved as UTF-8:
 
 ```python
 import polars as pl

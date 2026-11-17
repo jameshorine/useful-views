@@ -94,9 +94,11 @@ useful-views sync --all
 
 What useful-views does catch today:
 
-- an edited `recipe.toml`, a step added, removed or renamed, and a step's
-  changed description: `check` reports the recipe as out of date, and `sync`
-  runs it, then every recipe downstream of it;
+- a changed description, inputs or outputs in `recipe.toml`, a step added,
+  removed or renamed, and a step's changed description: `check` reports the
+  recipe as out of date, and `sync` runs it, then every recipe downstream of
+  it (an output you only remove is different: `sync` deletes that view and
+  drops it from the record, without running the recipe again);
 - a view made from an older version of another: the fingerprints in
   `datapackage.json` show it (`input-data-changed`), so `check` reports it,
   `sync` runs its recipe, and `cookbook --check` fails, even in CI without

@@ -34,8 +34,11 @@ long.write_parquet("work/pwt_panel/long.parquet")
 
 A step is an ordinary script. It does not import `useful_views`, and it can
 use any data library installed in the environment. It may start with
-anything (imports, a docstring or comments): useful-views does not read what
-is in it.
+anything (imports, a docstring or comments): useful-views does not read its
+comments. It must be saved as UTF-8 (a byte-order mark and Windows line
+endings are fine). A step file in another encoding, or one that cannot be
+read, is refused under rule 2 before anything on disk changes, even if a
+coding line declares another encoding.
 
 ## Names
 
@@ -47,10 +50,12 @@ number.
 
 `recipe.toml` lists exactly the step files in the folder, in the order of
 their numbers: one `[[steps]]` block for each, whose `file` is the file's
-name, letter case included. So to add a step, add its file and a `[[steps]]`
-block for it; to rename or renumber one, rename the file and change its
-`file =` to match; to remove one, delete both. Otherwise the recipe is
-refused, with a message that names what to fix.
+name, letter case included. The blocks go at the end of `recipe.toml`, after
+`description`, `inputs` and `outputs` (see [Recipes](recipes.md)). So to add
+a step, add its file and a `[[steps]]` block for it among the other blocks,
+in the position of its number; to rename or renumber one, rename the file and
+change its `file =` to match; to remove one, delete both. Otherwise the
+recipe is refused, with a message that names what to fix.
 
 A file named almost like a step is not run, and `run` warns about it:
 `1_clean.py`, `001_clean.py`, `01-clean.py`, `01 clean.py`, `01_clean.PY`,
@@ -76,8 +81,8 @@ reader who has not seen the code: what the step does to the data, not how.
 
 Its spaces and line breaks are joined into one line, so a long description
 can be written over several lines in triple quotes, as above. Comments and
-docstrings in the step file are not read. See [Recipes](recipes.md) for the
-rest of `recipe.toml`.
+docstrings in the step file are not read as the description. See
+[Recipes](recipes.md) for the rest of `recipe.toml`.
 
 Changing a step's description is a change `sync` notices: it runs the recipe
 again, and every recipe downstream of it.
@@ -184,5 +189,7 @@ recorded run. (Only when a recipe is about to read such a view do `run` and
 `sync` see that it is not the recorded one, and refuse.) Afterwards, run `useful-views run <recipe>` and then what it says to
 run next, or `useful-views sync --all`.
 
-Rules 2 and 3 are about steps, and rule 1 covers their `[[steps]]` blocks in
-`recipe.toml`; [Rules](../reference/rules.md) lists them all.
+Three rules are about steps: rule 1 covers their `[[steps]]` blocks in
+`recipe.toml`, rule 2 that the step files match those blocks and are saved as
+UTF-8, and rule 3 that steps are Python files. [Rules](../reference/rules.md)
+lists them all.

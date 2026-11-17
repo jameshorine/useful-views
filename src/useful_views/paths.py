@@ -106,6 +106,18 @@ CONTROL = re.compile(r"[\x00-\x1f]")
 UNSEEN = "\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069"
 
 
+def nfc(name: str) -> str:
+    """A name with its accented letters in one encoding (NFC): macOS and some
+    tools store "é" as "e" plus an accent, which looks the same."""
+    return unicodedata.normalize("NFC", name)
+
+
+def name_key(name: str) -> str:
+    """A file name as compared when letter case and the encoding of accented
+    letters are ignored."""
+    return nfc(name).casefold()
+
+
 def canonical(rel: str, root: Path | None = None) -> str | None:
     """`rel` rewritten in the one accepted form, or None if it leaves the project."""
     p = rel.strip().replace("\\", "/")

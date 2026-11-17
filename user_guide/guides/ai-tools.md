@@ -40,9 +40,12 @@ read files, and `cookbook`, which writes only `cookbook.json`.
   `recipe.toml` and replace the stub step. Paths are the same strings in
   `recipe.toml` and in the step's code, relative to the project root, with
   forward slashes, and with no wildcards.
-- `recipe.toml` lists every step file in a `[[steps]]` block, with one
-  sentence saying what the step does to the data. To add, rename or remove
-  a step file, change its block too.
+- `recipe.toml` lists every step file (`NN_name.py`) in a `[[steps]]` block
+  at the end of the file, in numeric order: `file` is the file's name (not
+  a path), and `description` is one sentence saying what the step does to
+  the data. When you add, rename or remove a step file, change its block
+  too. Comments in a step file are not read. Save `recipe.toml` and every
+  step file as UTF-8; a step file in another encoding is refused (rule 2).
 - To build: `useful-views sync`. It refuses before changing anything if any
   recipe breaks a rule, and lists every problem at once.
 - After editing the code inside a step of recipe X, run

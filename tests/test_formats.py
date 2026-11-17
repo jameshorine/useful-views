@@ -111,16 +111,6 @@ def test_step_description_whitespace_collapsed(driver, project):
     assert recorded(project, "demo")["steps"][0]["description"] == "Reshape the data into long form."
 
 
-def test_a_step_python_cannot_read_fails_as_a_step(driver, project):
-    recipe_with_step_text(project, "")
-    write_bytes(project, "recipes/demo/01_make.py", ("# Café data.\n" + step_body([VIEW])).encode("latin-1"))
-    before = generated(project)
-    out = driver.run("demo")
-    assert not out.ok
-    if driver.name == "api":
-        assert isinstance(out.error, uvs.StepFailed)
-    assert generated(project) == before
-    assert not (project / VIEW).exists()
 
 
 # --- recipe.toml text --------------------------------------------------------

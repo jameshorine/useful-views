@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tomllib
+import unicodedata
 from pathlib import Path
 
 import pyarrow as pa
@@ -358,7 +360,7 @@ def test_rule1_backslash_in_a_path_still_gets_the_path_advice(driver, project):
 def test_rule2_a_listed_step_file_is_missing(driver, project):
     make_recipe(project, steps={}, listed=step_block("01_make.py"))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=2, path=STEP_A, mentions=["no such file"])
+    assert_refused(driver, project, "a", rule=2, path=TOML_A, mentions=["no such file", STEP_A])
 
 
 def test_rule2_only_ignored_files(driver, project):
@@ -366,7 +368,7 @@ def test_rule2_only_ignored_files(driver, project):
     make_recipe(project, steps={"1_make.py": make_views_step([VIEW]), "notes.txt": "notes\n",
                                 "01_make.py.bak": make_views_step([VIEW])}, listed=step_block("01_make.py"))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=2, path=STEP_A)
+    assert_refused(driver, project, "a", rule=2, path=TOML_A, mentions=[STEP_A])
 
 
 def test_rule2_a_step_file_not_listed_refuses_before_the_first_step_runs(driver, project):
@@ -375,8 +377,8 @@ def test_rule2_a_step_file_not_listed_refuses_before_the_first_step_runs(driver,
     make_recipe(project, steps={"01_first.py": first, "02_second.py": "print('not listed')\n"},
                 listed=step_block("01_first.py"))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=2, path="recipes/a/02_second.py",
-                   mentions=["does not list it"])
+    assert_refused(driver, project, "a", rule=2, path=TOML_A,
+                   mentions=["recipes/a/02_second.py", "does not list it"])
     assert not (project / marker).exists()
 
 
@@ -389,13 +391,13 @@ def test_rule2_a_listed_file_not_named_like_a_step(driver, project):
 def test_rule2_a_listed_file_in_other_letter_case(driver, project):
     make_recipe(project, listed=step_block("01_Make.py"))
     seed_leftovers(project)
-    assert_refused(driver, project, "a", rule=2, path="recipes/a/01_Make.py", mentions=["letter case"])
+    assert_refused(driver, project, "a", rule=2, path=TOML_A, mentions=["recipes/a/01_Make.py", "letter case"])
 
 
 def test_rule2_a_renamed_step_names_both_files(driver, project):
     make_recipe(project, steps={"01_cleaned.py": make_views_step([VIEW])}, listed=step_block("01_clean.py"))
     seed_leftovers(project)
-    out = assert_refused(driver, project, "a", rule=2, path="recipes/a/01_clean.py")
+    out = assert_refused(driver, project, "a", rule=2, path=TOML_A, mentions=["recipes/a/01_clean.py"])
     assert "01_cleaned.py" in out.message, out.message
 
 
@@ -414,6 +416,119 @@ def test_rule2_two_steps_share_a_number(driver, project):
                          path=("recipes/a/01_make.py", "recipes/a/01_again.py"), path_in_message=False)
     assert "recipes/a/" in out.message
     assert "01_make.py" in out.message and "01_again.py" in out.message
+
+
+def test_rule2_a_listed_name_in_another_unicode_encoding_is_the_same_file(driver, project):
+    """macOS and some tools store "é" as "e" plus an accent; it is the same name."""
+    decomposed = unicodedata.normalize("NFD", "01_café.py")
+    make_recipe(project, steps={decomposed: make_views_step([VIEW])},
+                listed=step_block(unicodedata.normalize("NFC", "01_café.py")))
+    out = driver.run("a")
+    assert out.ok, out.message
+
+
+def test_rule2_a_listed_file_whose_extension_differs_in_case_says_to_rename_it(driver, project):
+    make_recipe(project, steps={"01_make.PY": make_views_step([VIEW])}, listed=step_block("01_make.py"))
+    seed_leftovers(project)
+    assert_refused(driver, project, "a", rule=2, path="recipes/a/01_make.PY", mentions=["rename the file to 01_make.py"])
+
+
+def test_rule2_a_listed_folder_is_not_a_step_file(driver, project):
+    make_recipe(project, steps={"01_make.py": make_views_step([VIEW])},
+                listed=step_block("01_make.py") + step_block("02_more.py"))
+    (project / "recipes/a/02_more.py").mkdir()
+    seed_leftovers(project)
+    assert_refused(driver, project, "a", rule=2, path=TOML_A, mentions=["it is a folder"])
+
+
+def test_rule2_a_step_not_saved_as_utf8_is_refused_before_anything_changes(driver, project):
+    make_recipe(project)
+    (project / STEP_A).write_bytes("# Écrire la vue.\nprint(1)\n".encode("latin-1"))
+    seed_leftovers(project)
+    out = assert_refused(driver, project, "a", rule=2, path=STEP_A)
+    assert "UTF-8" in out.message
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_rule2_an_unreadable_step_is_refused_before_anything_changes(driver, project):
+    make_recipe(project)
+    assert driver.run("a").ok
+    step = project / STEP_A
+    step.chmod(0)
+    try:
+        if os.access(step, os.R_OK):
+            pytest.skip("running with privileges that ignore file permissions")
+        out = driver.run("a")  # not assert_refused: its snapshot cannot read the step either
+        assert not out.ok and out.exit_code == 3
+        assert "Cannot read" in out.message and STEP_A in out.message, out.message
+        if driver.name == "api":
+            assert out.rule == 2 and out.error.path == STEP_A
+        assert (project / VIEW).exists()
+    finally:
+        step.chmod(0o644)
+
+
+@pytest.mark.parametrize("file, says", [
+    pytest.param("01_make.py ", 'write file = "01_make.py"', id="trailing-space"),
+    pytest.param("/", 'write file = "NN_name.py"', id="only-a-slash"),
+    pytest.param("01_ma\u200eke.py", "invisible character (U+200E)", id="invisible-character"),
+])
+def test_rule1_a_step_file_name_that_is_not_bare(driver, project, file, says):
+    make_recipe(project, listed=step_block(file))
+    seed_leftovers(project)
+    assert_refused(driver, project, "a", rule=1, path=TOML_A, mentions=[says])
+
+
+def test_rule1_the_blocks_to_paste_are_valid_toml_whatever_the_file_name(driver, project):
+    if sys.platform == "win32":
+        pytest.skip("Windows file names cannot hold a double quote")
+    name = '01_a"b\\c.py'
+    make_recipe(project, steps={name: make_views_step([VIEW])}, listed="")
+    seed_leftovers(project)
+    out = assert_refused(driver, project, "a", rule=1, path=TOML_A)
+    block = "\n".join(line.strip() for line in out.message.split("\n") if line.strip().startswith(("[[steps]]", "file =")))
+    assert tomllib.loads(block)["steps"][0]["file"] == name, out.message
+
+
+def test_rule1_outputs_inside_a_single_steps_table_are_explained(driver, project):
+    make_recipe(project)
+    write_toml(project, "a", outputs=None,
+               listed=f'\n[steps]\nfile = "01_make.py"\ndescription = "Write the view."\noutputs = [{tstr(VIEW)}]\n')
+    seed_leftovers(project)
+    out = assert_refused(driver, project, "a", rule=1, path=TOML_A,
+                         mentions=["Move `outputs` above the first [[steps]]", "single table"])
+    assert "`outputs` is missing" not in out.message, out.message
+
+
+@pytest.mark.parametrize("toml, says", [
+    pytest.param('description = "Test recipe."\n' + LISTS + step_block("01_make.py") + 'file = "02_more.py"\n'
+                 'description = "More."\n', "put [[steps]] above that step's file and description",
+                 id="second-header-forgotten"),
+    pytest.param('description = "Test recipe."\n' + LISTS + '\n[steps]\nfile = "01_make.py"\ndescription = "A."\n'
+                 '\n[steps]\nfile = "02_more.py"\ndescription = "B."\n', "[[steps]], with two pairs",
+                 id="two-single-bracket-tables"),
+    pytest.param('description = """\nTest recipe.\n' + LISTS + step_block("01_make.py"), "never closed",
+                 id="unclosed-triple-quotes"),
+    pytest.param('description = "Test recipe."\n' + LISTS + '\n[[steps]]\nfile = "01_make.py"\ndescription = """\n'
+                 'Compute the ratio:\ngdp_pc = rgdpe \\ pop, per person."""\n', "a backslash starts an escape",
+                 id="key-like-line-inside-a-description"),
+])
+def test_rule1_more_toml_mistakes_get_the_right_advice(driver, project, toml, says):
+    make_recipe(project)
+    write(project, TOML_A, toml)
+    seed_leftovers(project)
+    assert_refused(driver, project, "a", rule=1, path=TOML_A, mentions=[says])
+
+
+def test_outputs_below_the_steps_do_not_make_a_reader_look_wrong(driver, project):
+    """b reads a's view; a wrote its outputs below [[steps]]. Only a is at fault."""
+    make_recipe(project, "a")
+    write_toml(project, "a", outputs=None, listed=step_block("01_make.py") + f"outputs = [{tstr(VIEW)}]\n")
+    make_recipe(project, "b", inputs=(VIEW,), outputs=("useful-views/b-view.parquet",))
+    out = driver.run("b")
+    assert not out.ok
+    assert "If it is raw data" not in out.message and "not made by any recipe" not in out.message, out.message
+    assert "recipes/a" in out.message, out.message
 
 
 # --- rule 3: steps in another language ----------------------------------------
