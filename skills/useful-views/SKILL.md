@@ -43,6 +43,11 @@ useful-views/          # the views (parquet) each recipe declares, plus the gene
 description = "One sentence saying what this recipe produces."
 inputs  = ["raw/my_data.csv"]                   # files under raw/, or other recipes' views
 outputs = ["useful-views/my-view.parquet"]      # .parquet files directly in useful-views/
+
+# One block per step file, in numeric order, at the end of the file
+[[steps]]
+file = "01_clean.py"                            # the file's name in this folder, not a path
+description = "One sentence saying what this step does to the data."
 ```
 
 In `datapackage.json`, each view's entry has its `fingerprint` (a data hash
@@ -58,8 +63,13 @@ fingerprint (a list or struct column, or one labelled GEOMETRY or
 GEOGRAPHY), or one this version does not understand, cannot be compared:
 `check` and `sync` then name the recipes they cannot judge, in `warnings`.
 
-Each step `NN_name.py` starts with a `#` comment saying what it does, runs
-from the project root, reads and writes files by the same path strings as in
+The `[[steps]]` blocks must list exactly the step files `NN_name.py` in the
+folder, in numeric order (rule 2): when you add, rename or remove a step
+file, change its block too. Keep them at the end of `recipe.toml`, since
+TOML puts every line below a `[[steps]]` header into that step. Use triple
+quotes, `"""..."""`, for a description over several lines or with double
+quotes in it. Comments in a step file are not read. Each step runs from the
+project root, reads and writes files by the same path strings as in
 `recipe.toml`, and passes data to later steps only through `work/<name>/`.
 
 ## When to use what

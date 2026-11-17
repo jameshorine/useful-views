@@ -4,6 +4,32 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
+## Unreleased
+
+- Breaking: `recipe.toml` now lists the recipe's steps, so it holds the
+  whole recipe: inputs, steps with their descriptions, and outputs. Each
+  step is a `[[steps]]` block at the end of the file, with `file`, the step
+  file's name, and `description`, one sentence saying what the step does
+  (over several lines in triple quotes, if long). The blocks must list
+  exactly the `NN_name.py` files in the folder, in the order of their
+  numbers; rule 2 is now "Steps are numbered and listed". `new-recipe`
+  writes one block, for `01_first_step.py`.
+- The top comment of a step file is no longer read: useful-views does not
+  read step files at all, so one may start with anything (imports, a
+  docstring or comments). The records
+  hold the same fields as before: each step's `name`, `path` and
+  `description`.
+- The `pwt` example uses the new format: `example` downloads tag
+  `examples-v3` of useful-views-data.
+
+### Upgrading
+
+- In each `recipe.toml`, add a `[[steps]]` block at the end for each step
+  file, in order, with its old top comment as the description. Until you
+  do, `run` and `sync` refuse the recipe and `check` reports it, with a
+  block to paste for each step file. Copied word for word, the descriptions
+  match the records, so `sync` has nothing to run.
+
 ## 0.2.0 (2026-10-30)
 
 Fingerprints: useful-views now records what each view contains, and uses it

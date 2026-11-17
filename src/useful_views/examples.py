@@ -23,7 +23,7 @@ from .paths import is_ignored
 from .project import check_not_nested, init, too_broad
 
 DATA_REPO = "https://raw.githubusercontent.com/jameshorine/useful-views-data"
-DATA_TAG = "examples-v2"
+DATA_TAG = "examples-v3"
 # Set this to download from somewhere else: a mirror, or a local copy (a
 # folder path or file:// URL) laid out like the repository (examples/<name>/...).
 DATA_URL_ENV = "USEFUL_VIEWS_DATA_URL"
@@ -35,12 +35,12 @@ EXAMPLES = {
         "files": {
             "README.md": "7911d2ef0326d7f31f603a56bcefd571a8f1290c24e91085a609d3293cccb830",
             "raw/pwt110_bra_deu_esp_usa.csv": "e7d172ce2594e4c2717aa9efd2558b2868745f5b1124861548d913ade61476eb",
-            "recipes/pwt_panel/recipe.toml": "d8b119db27cfb18dc48fff42bd09c467687ff8b72d4590694f994173a3879478",
-            "recipes/pwt_panel/01_reshape_long.py": "29e51ff4afd23ebdcd320ec0880855cac7c01ec8b3bc647bd2b2546e83da629a",
-            "recipes/pwt_panel/02_keep_core_variables.py": "10033b28165644b38bd6c3368867ba31f6cd86408603762e1252710388cc80fa",
-            "recipes/pwt_panel/03_pivot_to_panel.py": "258dfe35cb806c52d8bbcbc57399463d2c50d17cbd8ffd99302dea2a266da84e",
-            "recipes/gdp_per_capita/recipe.toml": "f650e3a4953413302d89cf57ebb1086b8ef0777e1ae77eae19d7f3c7bb0240e5",
-            "recipes/gdp_per_capita/01_derive_measures.py": "5e7da67ec7db114f24a0913974b435815998b924a3a1d5b6dea3c0ba02695523",
+            "recipes/pwt_panel/recipe.toml": "01813ebc8a456dff3ac73ca291febf0648778f15f1b877745b445050657c81f8",
+            "recipes/pwt_panel/01_reshape_long.py": "84804eb6aff7fab434e548cc237492f606e32c1ab54321786d3b5d7af908594d",
+            "recipes/pwt_panel/02_keep_core_variables.py": "9eb61ae3dd2b69c7cca53e8713e1d19140f9555a6fbf90cdcd01ccae37e4a184",
+            "recipes/pwt_panel/03_pivot_to_panel.py": "ad7c58b31692d6697910d923c6f50afcf66462cdd4d54aa1955388ead12449c4",
+            "recipes/gdp_per_capita/recipe.toml": "d65de40b43287d0c48813987c4f3a7708234288d888177baa12c69dd8978664d",
+            "recipes/gdp_per_capita/01_derive_measures.py": "4545785b603c7f2bdeaf9233069b5abd23649ac67cc4a886cadcd1c3b233b52d",
         },
     },
 }

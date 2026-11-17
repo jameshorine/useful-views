@@ -1,3 +1,10 @@
 description = "GDP per capita, its annual growth, and its level relative to the United States."
 inputs  = ["useful-views/pwt-panel.parquet"]
 outputs = ["useful-views/gdp-per-capita.parquet"]
+
+[[steps]]
+file = "01_derive_measures.py"
+description = """
+Compute GDP per capita (rgdpe / pop, in 2021 US$), its annual growth in
+percent (from rgdpna / pop, the series PWT recommends for growth over time),
+and its level relative to the United States in the same year."""

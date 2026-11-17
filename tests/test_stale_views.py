@@ -15,7 +15,7 @@ import pytest
 
 import useful_views as uvs
 
-from conftest import add_raw_csv, write, write_recipe
+from conftest import add_raw_csv, write, write_recipe, write_toml
 from test_record_fingerprints import DOWN, DOWN_STEP, UP, as_written_by_0_1_0, chain, views
 
 
@@ -228,7 +228,7 @@ def test_fingerprints_from_other_rules_are_never_compared(project):
     with pytest.warns(uvs.UsefulViewsWarning, match="cannot tell whether recipes/down"):
         assert uvs.check(root=project) == []  # not taken for a change
     # Nor for no change: when up runs again, down runs too.
-    write(project, "recipes/up/recipe.toml",
+    write_toml(project, "recipes/up/recipe.toml",
           f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
     with pytest.warns(uvs.UsefulViewsWarning):  # the file is rewritten in the readable layout
         assert uvs.sync(root=project).ran == ("up", "down")
@@ -286,7 +286,7 @@ def test_sync_refuses_a_pulled_view_before_running_anything(project):
         uvs.run("up", root=project)
     (project / UP).write_bytes(old_up)
     for name, inputs, out in (("alpha", "raw/src.csv", "useful-views/alpha.parquet"), ("down", UP, DOWN)):
-        write(project, f"recipes/{name}/recipe.toml",  # both changed, so both queued; alpha runs first
+        write_toml(project, f"recipes/{name}/recipe.toml",  # both changed, so both queued; alpha runs first
               f'description = "Changed."\ninputs = ["{inputs}"]\noutputs = ["{out}"]\n')
     before = (project / "datapackage.json").read_bytes()
     with pytest.raises(uvs.ProjectError, match="sync would run recipes/down, which reads") as caught:
@@ -441,7 +441,7 @@ def test_a_sync_that_stops_removes_the_views_made_from_the_old_ones(project):
     write_recipe(project, "boom", inputs=[UP], outputs=["useful-views/boom.parquet"],
                  steps={"01_add.py": DOWN_STEP.replace(DOWN, "useful-views/boom.parquet")})
     uvs.sync(root=project)
-    write(project, "recipes/up/recipe.toml",  # up runs again, with the same data
+    write_toml(project, "recipes/up/recipe.toml",  # up runs again, with the same data
           f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
     write(project, "recipes/boom/01_add.py", "# Add a column to up's table.\nraise SystemExit('boom')\n")
     write_recipe(project, "boom", inputs=[UP], outputs=["useful-views/boom.parquet"], description="Now fails.",
@@ -462,14 +462,14 @@ def test_a_stopped_sync_leaves_no_view_to_pass_for_current_whatever_queued_it(pr
                  steps={"01_add.py": DOWN_STEP.replace(DOWN, "useful-views/boom.parquet")})
     uvs.sync(root=project)
     toml = (project / "recipes/down/recipe.toml").read_text(encoding="utf-8")
-    write(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
-    write(project, "recipes/down/recipe.toml", toml.replace("Test recipe down.", "Edited."))
+    write_toml(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
+    write_toml(project, "recipes/down/recipe.toml", toml.replace("Test recipe down.", "Edited."))
     good = (project / "recipes/boom/01_add.py").read_text(encoding="utf-8")
     write(project, "recipes/boom/01_add.py", "# Add a column to up's table.\nraise SystemExit('boom')\n")
     with pytest.raises(uvs.StepFailed):
         uvs.sync(root=project)
     assert not (project / DOWN).exists()
-    write(project, "recipes/down/recipe.toml", toml)  # the edit to down is undone
+    write_toml(project, "recipes/down/recipe.toml", toml)  # the edit to down is undone
     write(project, "recipes/boom/01_add.py", good)
     assert uvs.sync(root=project).ran == ("boom", "down")
 
@@ -482,7 +482,7 @@ def test_a_sync_killed_between_recipes_leaves_no_view_to_pass_for_current(projec
     write_recipe(project, "boom", inputs=[UP], outputs=["useful-views/boom.parquet"],
                  steps={"01_add.py": DOWN_STEP.replace(DOWN, "useful-views/boom.parquet")})
     uvs.sync(root=project)
-    write(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
+    write_toml(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
     good = (project / "recipes/boom/01_add.py").read_text(encoding="utf-8")
     write(project, "recipes/boom/01_add.py",
           "# Add a column to up's table.\nimport os, signal\nos.kill(os.getppid(), signal.SIGKILL)\n")
@@ -504,7 +504,7 @@ def test_a_recipe_counts_as_run_once_recorded(project, monkeypatch):
     uvs.sync(root=project)
     write(project, "recipes/up/01_make.py", (project / "recipes/up/01_make.py").read_text(encoding="utf-8")
           + "open('raw/src.csv', 'a').write('')\nimport os\nos.utime('raw/src.csv', (1, 1))\n")
-    write(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
+    write_toml(project, "recipes/up/recipe.toml", f'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["{UP}"]\n')
     real = syncing.warn
 
     def interrupt(message, *args, **kwargs):

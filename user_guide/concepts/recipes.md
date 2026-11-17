@@ -9,7 +9,7 @@ recipe, and records that recipe.
 
 ```text
 recipes/pwt_panel/
-├── recipe.toml                 # description, inputs, outputs
+├── recipe.toml                 # description, inputs, steps, outputs
 ├── 01_reshape_long.py          # the steps, run in numeric order
 ├── 02_keep_core_variables.py
 └── 03_pivot_to_panel.py
@@ -21,12 +21,16 @@ recipes/pwt_panel/
 useful-views new-recipe pwt_panel
 ```
 
-This writes `recipes/pwt_panel/recipe.toml` and a stub step,
-`01_first_step.py`. Both say TODO, and the recipe is refused until you
-replace them. A recipe's name is its folder's name: lowercase letters,
-digits and underscores, such as `pwt_panel`. It may not be a name Windows
-reserves for devices (`con`, `aux`, `nul`, `prn`, `com1`, ...), or
-`__pycache__`, which useful-views ignores.
+This writes `recipes/pwt_panel/recipe.toml`, which lists one step, and that
+step's stub file, `01_first_step.py`. The recipe's description and the
+step's description in `recipe.toml` both say TODO, and the recipe is refused
+until you replace them. The stub file holds only a note; replace it with
+your code, renaming it if you like (and changing its `file =` to match).
+
+A recipe's name is its folder's name: lowercase letters, digits and
+underscores, such as `pwt_panel`. It may not be a name Windows reserves for
+devices (`con`, `aux`, `nul`, `prn`, `com1`, ...), or `__pycache__`, which
+useful-views ignores.
 
 ## recipe.toml
 
@@ -34,6 +38,22 @@ reserves for devices (`con`, `aux`, `nul`, `prn`, `com1`, ...), or
 description = "Country-year panel of core Penn World Table variables."
 inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
 outputs = ["useful-views/pwt-panel.parquet"]
+
+[[steps]]
+file = "01_reshape_long.py"
+description = """
+Reshape the wide export (one column per year) into one row per country,
+variable and year."""
+
+[[steps]]
+file = "02_keep_core_variables.py"
+description = """
+Keep eight core variables: three measures of GDP, population, employment,
+hours worked, human capital and TFP."""
+
+[[steps]]
+file = "03_pivot_to_panel.py"
+description = "Spread the variables into columns, giving one row per country and year."
 ```
 
 - `description`: one sentence saying what the recipe produces. It is the
@@ -42,9 +62,27 @@ outputs = ["useful-views/pwt-panel.parquet"]
   another recipe makes.
 - `outputs`: at least one `.parquet` file directly inside `useful-views/`:
   the views the steps write.
+- `steps`: a `[[steps]]` block for each step file in the folder, in the
+  order of their numbers, which is the order they run. Each has `file`, the
+  step file's name (just the name, not a path, so renaming the recipe's
+  folder changes nothing here), and `description`, one sentence saying what
+  the step does to the data (see [Steps](steps.md)).
 
-No path may be listed twice. Other keys are ignored with a warning, so check
-the spelling.
+Keep the `[[steps]]` blocks at the end of the file. TOML puts every line
+below a `[[steps]]` header into that step, so an `outputs = [...]` written
+below one is read as part of the step; useful-views notices and tells you to
+move it up.
+
+A description's spaces and line breaks are joined into one line, so a long
+one can be written over several lines in triple quotes, `"""..."""`, as
+above. A description with double quotes in it needs triple quotes too. A
+backslash starts an escape sequence: write it as `\\`, or put the text in
+triple single quotes, `'''...'''`, which keep backslashes as they are.
+Save `recipe.toml` as UTF-8 (a byte-order mark and Windows line endings are
+fine).
+
+No path and no step file may be listed twice. Other keys, at the top or in a
+`[[steps]]` block, are ignored with a warning, so check the spelling.
 
 ## Inputs and outputs
 
@@ -100,10 +138,10 @@ fine.
 
 `sync` compares each recipe folder with its record from the last successful
 run. It notices a changed description, inputs or outputs in `recipe.toml`, a
-step added, removed or renamed, and a step's changed description, and runs
-the recipe again, then every recipe downstream of it. An output you only
-remove is different: `sync` deletes that view and drops it from the record,
-without running the recipe again.
+step added, removed or renamed, and a step's changed description in
+`recipe.toml`, and runs the recipe again, then every recipe downstream of
+it. An output you only remove is different: `sync` deletes that view and
+drops it from the record, without running the recipe again.
 
 It does not notice edits inside a step's code, a helper module, or a raw
 file replaced under the same name. Nor does it notice a recipe change that
@@ -113,8 +151,9 @@ in git, still come from the recipe as it was. After any of those, use
 `useful-views sync --all`.
 
 To rename a recipe, rename its folder, change `work/<old name>/` to
-`work/<new name>/` in its steps, then run `useful-views sync`. To delete
-one, delete its folder and run `useful-views sync`, which removes its record,
+`work/<new name>/` in its steps, then run `useful-views sync`. The `file`
+names in its `recipe.toml` stay as they are. To delete one, delete its
+folder and run `useful-views sync`, which removes its record,
 its views and its work files. If another recipe reads one of those views,
 change that recipe's `inputs` first, or delete it too: otherwise its own
 views stay as they were, and only `check` reports the missing input. The

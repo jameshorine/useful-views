@@ -69,8 +69,8 @@ my-data-project/
 │
 ├── recipes/                      # written by humans, AI tools, or both
 │   ├── recipe_01/                # one folder = one recipe, at least 1 step, maybe more!
-│   │   ├── recipe.toml           # description, inputs, outputs
-│   │   ├── 01_first_step.py      # one file = at least one step; top comment is its description
+│   │   ├── recipe.toml           # description, inputs, steps (each with its description), outputs
+│   │   ├── 01_first_step.py      # one file = at least one step, listed in recipe.toml
 │   │   ├── 02_second_step.py
 │   │   └── 03_third_step.py
 │   │
@@ -152,6 +152,8 @@ not a work file.
 ## Writing a recipe
 
 A recipe folder holds one `recipe.toml` and at least one step file.
+`recipe.toml` is the whole recipe: its inputs, its steps with what each
+does, and its outputs.
 
 `recipes/pwt_panel/recipe.toml`:
 
@@ -159,12 +161,27 @@ A recipe folder holds one `recipe.toml` and at least one step file.
 description = "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States."
 inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
 outputs = ["useful-views/pwt-panel.parquet"]
+
+[[steps]]
+file = "01_reshape_long.py"
+description = """
+Reshape the wide export (one column per year) into one row per country,
+variable and year."""
+
+[[steps]]
+file = "02_keep_core_variables.py"
+description = """
+Keep eight core variables: three measures of GDP, population, employment,
+hours worked, human capital and TFP."""
+
+[[steps]]
+file = "03_pivot_to_panel.py"
+description = "Spread the variables into columns, giving one row per country and year."
 ```
 
 `recipes/pwt_panel/01_reshape_long.py`:
 
 ```python
-# Reshape the wide export (one column per year) into one row per country, variable and year.
 import polars as pl
 
 wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")
@@ -184,7 +201,9 @@ The conventions:
   another recipe.
 - An output is always a file directly inside `useful-views/`.
 - Step files are named `NN_name.py` and run in numeric order.
-- The comment at the top of a step file is its description. It is required.
+- `recipe.toml` lists every step file in a `[[steps]]` block, in that order,
+  with its description: one sentence saying what the step does to the data.
+  The description is required.
 - A step is an ordinary script. It runs from the project root and does not
   import `useful_views`. Use whichever data library you like.
 - Steps pass data to each other only through files in `work/<recipe>/`.
@@ -194,9 +213,11 @@ In detail:
 - **Recipe folder name**: lowercase letters, digits and underscores, such as
   `pwt_panel`. Create one with `useful-views new-recipe <name>`; its template
   says TODO and is refused until you fill it in.
-- **`recipe.toml`** has exactly three keys. `description` is one sentence,
-  required. `inputs` and `outputs` are lists of at least one path each. Other
-  keys are ignored with a warning.
+- **`recipe.toml`** has four keys. `description` is one sentence, required.
+  `inputs` and `outputs` are lists of at least one path each. `steps` is a
+  `[[steps]]` block for each step file, each with `file` and `description`;
+  keep them at the end of the file, since TOML puts every line below a
+  `[[steps]]` header into that step. Other keys are ignored with a warning.
 - **Inputs**: a file anywhere under `raw/`, or a view directly inside
   `useful-views/` that another recipe makes and has already made
   successfully.
@@ -215,13 +236,14 @@ In detail:
   (`02_clean.R`, `02_explore.ipynb`, ...) are refused: steps must be Python
   files. Any other file in the folder is ignored, unless it starts with
   `NN_` and ends in `.py` (then it is a step: keep old copies elsewhere).
-- **Step description**: the block of `#` lines at the very top of the file,
-  its lines joined with spaces into one line. Blank lines, a shebang, a
-  coding line, notebook cell markers (`# %%`, `# In[1]:`, with any title on
-  the same line), a Jupytext `# ---` header, an inline `# /// script` block
-  and decoration lines like `# -----` before it are skipped; a docstring is
-  not, so put the comment first. It must not start with TODO. Step files are
-  UTF-8.
+  `recipe.toml` lists exactly these files, in the order of their numbers:
+  to add, rename or remove a step, change both the file and its
+  `[[steps]]` block.
+- **Step description**: the `description` in the step's `[[steps]]` block,
+  joined into one line, so a long one can be written over several lines in
+  triple quotes (`"""..."""`), as can one with double quotes in it. It must
+  not start with TODO. useful-views does not read the step file's comments,
+  so a step file may start with anything.
 - **Steps** run one at a time as separate processes, with the project root as
   the working directory, using the same Python interpreter as useful-views,
   and with `work/<recipe>/` already created and empty. A step gets no
@@ -355,11 +377,13 @@ recipe runs again.
 
 `run` refuses a recipe, before changing anything on disk, when:
 
-1. `recipe.toml` is missing or unreadable, lacks `description`, `inputs` or
-   `outputs`, has an empty list, lists a path twice, or its description
-   starts with TODO.
-2. The recipe has no step file; a step has no top comment, or one that starts
-   with TODO; or two steps share a number.
+1. `recipe.toml` is missing or unreadable, lacks `description`, `inputs`,
+   `outputs` or a `[[steps]]` block, has an empty list, or lists a path or
+   a step file twice; a `[[steps]]` block lacks the file name of a step or a
+   description; or a description starts with TODO.
+2. The step files (`NN_name.py`) are not exactly the files `recipe.toml`
+   lists under `[[steps]]`, in the order of their numbers; or two steps
+   share a number.
 3. A file in the recipe folder is named like a step but is an R, notebook,
    Quarto, Julia or Stata file (`.R`, `.Rmd`, `.ipynb`, `.qmd`, `.jl`,
    `.do`): steps must be `.py` files.

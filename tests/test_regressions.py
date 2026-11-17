@@ -12,7 +12,7 @@ import pytest
 
 import useful_views as uvs
 from useful_views.paths import path_problem
-from useful_views.recipe import Step, step_description
+from useful_views.recipe import Step
 from useful_views.record import describe_raw, render_catalog
 from useful_views.runner import run_step
 
@@ -133,9 +133,6 @@ def test_non_utf8_csv_is_recorded_as_a_plain_file(project):
 
 # --- parsing and messages ---------------------------------------------------
 
-
-def test_cell_marker_ends_the_description():
-    assert step_description("# Reshape the data.\n# %%\nimport x\n") == "Reshape the data."
 
 
 @pytest.mark.parametrize("given, corrected", [

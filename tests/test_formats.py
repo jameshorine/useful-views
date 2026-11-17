@@ -15,10 +15,9 @@ import pytest
 
 import useful_views as uvs
 from useful_views.paths import path_problem, resource_name
-from useful_views.recipe import step_description
 from useful_views.record import field_type, render_catalog
 
-from conftest import REFERENCE, add_raw_csv, generated, make_views_step, write, write_recipe
+from conftest import ONE_STEP, REFERENCE, add_raw_csv, generated, make_views_step, write, write_recipe
 
 VIEW = "useful-views/view.parquet"
 
@@ -77,114 +76,51 @@ def write_bytes(root: Path, rel: str, data: bytes) -> Path:
 def recipe_with_step_text(root: Path, step_text: str, *, name: str = "demo", filename: str = "01_make.py") -> None:
     """A one-step recipe whose step file has exactly `step_text` (UTF-8, as written)."""
     add_raw_csv(root)
-    write_recipe(root, name, inputs=["raw/data.csv"], outputs=[VIEW], steps={})
+    listed = f'\n[[steps]]\nfile = "{filename}"\ndescription = "Write the view."\n'
+    write_recipe(root, name, inputs=["raw/data.csv"], outputs=[VIEW], steps={}, listed=listed)
     write_bytes(root, f"recipes/{name}/{filename}", step_text.encode("utf-8"))
 
 
-# --- step descriptions (unit) ------------------------------------------------
+# --- step descriptions ---------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "text, expected",
-    [
-        pytest.param("# Do a thing.\nimport x\n", "Do a thing.", id="simple"),
-        pytest.param("# Reshape the data\n# into long form.\nx = 1\n", "Reshape the data into long form.",
-                     id="multi-line-join"),
-        pytest.param("# First.\n#\n# Second.\nx = 1\n", "First. Second.", id="empty-hash-line-dropped"),
-        pytest.param("# First.\n#    \n#\n# Second.\n", "First. Second.", id="blank-hash-lines-dropped"),
-        pytest.param("## Heading text.\nx = 1\n", "Heading text.", id="double-hash"),
-        pytest.param("#No space after hash.\n", "No space after hash.", id="no-space"),
-        pytest.param("#   lots   of\tspace  \n#    here \n", "lots of space here", id="whitespace-collapsed"),
-        pytest.param("\n\n   \n# After blanks.\nx = 1\n", "After blanks.", id="leading-blank-lines"),
-        pytest.param("#!/usr/bin/env python\n# Real description.\n", "Real description.", id="shebang"),
-        pytest.param("# -*- coding: utf-8 -*-\n# Real.\n", "Real.", id="coding-line-1"),
-        pytest.param("#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n# Real.\n", "Real.",
-                     id="shebang-then-coding"),
-        pytest.param("# vim: set fileencoding=utf-8 :\n# Real.\n", "Real.", id="vim-coding-line"),
-        pytest.param("\n# coding: utf-8\n# Real.\n", "Real.", id="coding-line-2"),
-        pytest.param("# %%\n# Load the raw file.\nimport x\n", "Load the raw file.", id="percent-cell-marker"),
-        pytest.param("# %% [markdown]\n# Describe it.\n", "Describe it.", id="percent-markdown-marker"),
-        pytest.param("# In[1]:\n\n\n# From a notebook export.\nimport x\n", "From a notebook export.",
-                     id="in-cell-marker"),
-        pytest.param("# In[ ]:\n# From a notebook export.\n", "From a notebook export.", id="in-blank-marker"),
-        pytest.param(
-            "# ---\n# jupyter:\n#   jupytext:\n#     formats: ipynb,py:percent\n#   kernelspec:\n"
-            "#     name: python3\n# ---\n\n# %%\n# Jupytext percent step.\nimport x\n",
-            "Jupytext percent step.",
-            id="jupytext-percent",
-        ),
-        pytest.param(
-            "# ---\n# jupyter:\n#   kernelspec:\n#     display_name: Python 3\n#     name: python3\n# ---\n\n"
-            "# Jupytext light step.\nimport x\n",
-            "Jupytext light step.",
-            id="jupytext-light",
-        ),
-        pytest.param("# Desc one.\n\n# Not this.\nx = 1\n", "Desc one.", id="blank-line-ends-block"),
-        pytest.param("# Desc.\nimport x\n# A later comment.\n", "Desc.", id="code-ends-block"),
-        pytest.param("    # Indented desc.\nx = 1\n", "Indented desc.", id="indented-hash"),
-        pytest.param("# Données économiques — São Paulo.\n", "Données économiques — São Paulo.", id="non-ascii"),
-        pytest.param("# Only line, no newline", "Only line, no newline", id="no-trailing-newline"),
-        pytest.param('"""A docstring."""\nx = 1\n', "", id="docstring-only"),
-        pytest.param("import x\n# Too late.\n", "", id="code-first"),
-        pytest.param("#\n#\nimport x\n", "", id="only-empty-hashes"),
-        pytest.param("#!/usr/bin/env python\nimport x\n", "", id="shebang-only"),
-        pytest.param("", "", id="empty-file"),
-    ],
-)
-def test_step_description(text, expected):
-    assert step_description(text) == expected
-
-
-def test_step_description_coding_line_after_line_2_is_description():
-    # A coding line counts only on line 1 or 2; on line 3 it is a comment.
-    assert step_description("\n\n# coding: utf-8\n# Real.\n") == "coding: utf-8 Real."
-
-
-# --- step descriptions (end to end) -----------------------------------------
-
-
-def test_bom_crlf_shebang_step_description_recorded(driver, project):
-    text = "\ufeff#!/usr/bin/env python\r\n\r\n# Reshape the data\r\n#   into long   form.\r\n" + step_body([VIEW]).replace(
-        "\n", "\r\n"
-    )
-    recipe_with_step_text(project, "")
-    write_bytes(project, "recipes/demo/01_make.py", text.encode("utf-8"))
+@pytest.mark.parametrize("text", [
+    pytest.param("\ufeff#!/usr/bin/env python\r\n\r\n# A comment that differs.\r\n", id="bom-crlf-shebang"),
+    pytest.param('"""A docstring."""\n', id="docstring-first"),
+    pytest.param("#\n#   \n", id="empty-comment-lines"),
+    pytest.param("", id="no-comment"),
+])
+def test_a_step_file_is_never_read_for_its_description(driver, project, text):
+    body = step_body([VIEW])
+    if "\r\n" in text:
+        body = body.replace("\n", "\r\n")
+    recipe_with_step_text(project, text + body)
     out = driver.run("demo")
     assert out.ok, out.message
-    steps = recorded(project, "demo")["steps"]
-    assert steps == [
-        {"name": "make", "path": "recipes/demo/01_make.py", "description": "Reshape the data into long form."}
+    assert recorded(project, "demo")["steps"] == [
+        {"name": "make", "path": "recipes/demo/01_make.py", "description": "Write the view."}
     ]
 
 
-def test_notebook_export_step_description_recorded(driver, project):
-    text = "#!/usr/bin/env python\n# coding: utf-8\n\n# In[1]:\n\n\n# Derived from a notebook.\n" + step_body([VIEW])
-    recipe_with_step_text(project, text)
+def test_step_description_whitespace_collapsed(driver, project):
+    listed = ('\n[[steps]]\nfile = "01_make.py"\ndescription = """\n  Reshape the data\n   into long\tform.  \n"""\n')
+    add_raw_csv(project)
+    write_recipe(project, "demo", inputs=["raw/data.csv"], outputs=[VIEW], listed=listed)
     out = driver.run("demo")
     assert out.ok, out.message
-    assert recorded(project, "demo")["steps"][0]["description"] == "Derived from a notebook."
+    assert recorded(project, "demo")["steps"][0]["description"] == "Reshape the data into long form."
 
 
-def test_docstring_only_step_refused_with_hint(driver, project):
-    recipe_with_step_text(project, '"""Write the view."""\n' + step_body([VIEW]))
+def test_a_step_python_cannot_read_fails_as_a_step(driver, project):
+    recipe_with_step_text(project, "")
+    write_bytes(project, "recipes/demo/01_make.py", ("# Café data.\n" + step_body([VIEW])).encode("latin-1"))
     before = generated(project)
     out = driver.run("demo")
     assert not out.ok
-    assert out.exit_code == 3
-    assert "recipes/demo/01_make.py" in out.message
-    assert "docstring" in out.message.lower()
     if driver.name == "api":
-        assert out.rule == 2
+        assert isinstance(out.error, uvs.StepFailed)
     assert generated(project) == before
-
-
-def test_empty_hash_top_comment_is_no_top_comment(driver, project):
-    recipe_with_step_text(project, "#\n#   \n" + step_body([VIEW]))
-    out = driver.run("demo")
-    assert not out.ok
-    assert "recipes/demo/01_make.py" in out.message
-    if driver.name == "api":
-        assert out.rule == 2
+    assert not (project / VIEW).exists()
 
 
 # --- recipe.toml text --------------------------------------------------------
@@ -197,7 +133,7 @@ def test_recipe_description_whitespace_collapsed(driver, project):
         project,
         "recipes/demo/recipe.toml",
         'description = """\n  A multi-line\n   description\twith   gaps.  \n"""\n'
-        'inputs = ["raw/data.csv"]\noutputs = ["useful-views/view.parquet"]\n',
+        'inputs = ["raw/data.csv"]\noutputs = ["useful-views/view.parquet"]\n' + ONE_STEP,
     )
     out = driver.run("demo")
     assert out.ok, out.message
@@ -211,7 +147,7 @@ def test_recipe_toml_with_bom_and_crlf_accepted(driver, project):
     toml = (
         '\ufeffdescription = "Read with a BOM and CRLF."\r\n'
         'inputs = ["raw/data.csv"]\r\noutputs = ["useful-views/view.parquet"]\r\n'
-    )
+    ) + ONE_STEP.replace("\n", "\r\n")
     write_bytes(project, "recipes/demo/recipe.toml", toml.encode("utf-8"))
     out = driver.run("demo")
     assert out.ok, out.message
@@ -236,21 +172,6 @@ def test_non_utf8_recipe_toml_refused(driver, project):
     assert not (project / VIEW).exists()
 
 
-def test_non_utf8_step_refused(driver, project):
-    recipe_with_step_text(project, "")
-    write_bytes(project, "recipes/demo/01_make.py", ("# Café data.\n" + step_body([VIEW])).encode("latin-1"))
-    before = generated(project)
-    out = driver.run("demo")
-    assert not out.ok
-    assert out.exit_code == 3
-    assert "UTF-8" in out.message
-    assert "recipes/demo/01_make.py" in out.message
-    if driver.name == "api":
-        assert out.error.path == "recipes/demo/01_make.py"
-    assert generated(project) == before
-    assert not (project / VIEW).exists()
-
-
 def test_unknown_recipe_toml_keys_warn_and_run(driver, project):
     add_raw_csv(project)
     write_recipe(project, "demo", inputs=["raw/data.csv"], outputs=[VIEW])
@@ -258,7 +179,7 @@ def test_unknown_recipe_toml_keys_warn_and_run(driver, project):
         project,
         "recipes/demo/recipe.toml",
         'description = "Has extra keys."\nauthor = "A. Student"\n'
-        'inputs = ["raw/data.csv"]\noutputs = ["useful-views/view.parquet"]\n\n[meta]\nversion = 2\n',
+        'inputs = ["raw/data.csv"]\noutputs = ["useful-views/view.parquet"]\n\n[meta]\nversion = 2\n' + ONE_STEP,
     )
     out = driver.run("demo")
     assert out.ok, out.message
@@ -390,7 +311,8 @@ def test_backslash_output_path_refused_rule_7_with_correction(driver, project):
     write(
         project,
         "recipes/demo/recipe.toml",
-        "description = \"Backslash output.\"\ninputs = [\"raw/data.csv\"]\noutputs = ['useful-views\\view.parquet']\n",
+        "description = \"Backslash output.\"\ninputs = [\"raw/data.csv\"]\noutputs = ['useful-views\\view.parquet']\n"
+        + ONE_STEP,
     )
     out = driver.run("demo")
     assert not out.ok
@@ -869,7 +791,8 @@ def test_non_ascii_description_written_literally(driver, project):
 def test_generated_files_lf_only_and_exact_layout(driver, project):
     add_raw_csv(project)
     write_recipe(project, "demo", inputs=["raw/data.csv"], outputs=[VIEW], steps={})
-    toml = 'description = "CRLF in, LF out."\r\ninputs = ["raw/data.csv"]\r\noutputs = ["useful-views/view.parquet"]\r\n'
+    toml = ('description = "CRLF in, LF out."\r\ninputs = ["raw/data.csv"]\r\noutputs = ["useful-views/view.parquet"]\r\n'
+            + ONE_STEP.replace("\n", "\r\n"))
     write_bytes(project, "recipes/demo/recipe.toml", toml.encode("utf-8"))
     write_bytes(project, "recipes/demo/01_make.py", make_views_step([VIEW]).replace("\n", "\r\n").encode("utf-8"))
     out = driver.run("demo")

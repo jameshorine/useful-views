@@ -354,7 +354,10 @@ def test_new_recipe_template_contents(project):
     assert declared["description"].startswith("TODO")
     assert declared["inputs"] == []
     assert declared["outputs"] == []
-    assert set(declared) == {"description", "inputs", "outputs"}
+    assert set(declared) == {"description", "inputs", "outputs", "steps"}
+    (listed,) = declared["steps"]
+    assert listed["file"] == "01_first_step.py"
+    assert listed["description"].startswith("TODO")
     step = (folder / "01_first_step.py").read_text(encoding="utf-8")
     assert step.startswith("# TODO")
 
@@ -420,44 +423,46 @@ def test_untouched_template_is_refused_under_rule_1_with_all_problems(driver, pr
         assert out.error.path == "recipes/fresh/recipe.toml"
 
 
-def test_fixed_toml_with_stub_step_is_refused_under_rule_2(driver, project):
-    assert driver.new_recipe("fresh").ok
+
+def fill_template(project: Path, *, step_todo: bool = False) -> tuple[Path, str]:
+    """Fill in the recipe.toml new_recipe wrote for "fresh"; with `step_todo`,
+    leave its step's TODO description. Returns the toml path and the view."""
+    toml_path = project / "recipes" / "fresh" / "recipe.toml"
     raw = add_raw_csv(project)
-    write(
-        project,
-        "recipes/fresh/recipe.toml",
-        f'description = "A fresh recipe."\ninputs = ["{raw}"]\noutputs = ["useful-views/fresh.parquet"]\n',
-    )
+    view = "useful-views/fresh.parquet"
+    text = toml_path.read_text(encoding="utf-8")
+    text = text.replace("TODO: one sentence saying what this recipe produces.", "A fresh recipe.")
+    text = text.replace("inputs  = []", f'inputs  = ["{raw}"]').replace("outputs = []", f'outputs = ["{view}"]')
+    if not step_todo:
+        text = text.replace("TODO: one sentence saying what this step does.", "Write the fresh view.")
+    toml_path.write_text(text, encoding="utf-8")
+    return toml_path, view
+
+
+def test_a_filled_recipe_toml_with_the_step_todo_left_is_refused(driver, project):
+    assert driver.new_recipe("fresh").ok
+    fill_template(project, step_todo=True)
     before = snapshot(project)
     out = driver.run("fresh")
     assert not out.ok
     assert out.exit_code == 3
     assert "TODO" in out.message
-    assert "recipes/fresh/01_first_step.py" in out.message
+    assert "01_first_step.py" in out.message
     assert snapshot(project) == before
     if driver.name == "api":
         assert isinstance(out.error, uvs.RecipeRefused)
-        assert out.rule == 2
-        assert out.error.path == "recipes/fresh/01_first_step.py"
+        assert out.rule == 1
+        assert out.error.path == "recipes/fresh/recipe.toml"
 
 
-def test_template_note_after_the_blank_line_is_not_part_of_the_step_description(driver, project):
-    """Replacing only the TODO line of the stub step is enough: the
-    blank-line-separated note below it is not part of the description."""
+
+def test_the_stub_step_runs_with_its_note_once_recipe_toml_is_filled(driver, project):
+    """The stub step's TODO note is only a comment: useful-views never reads it."""
     assert driver.new_recipe("fresh").ok
-    raw = add_raw_csv(project)
-    view = "useful-views/fresh.parquet"
-    write(
-        project,
-        "recipes/fresh/recipe.toml",
-        f'description = "A fresh recipe."\ninputs = ["{raw}"]\noutputs = ["{view}"]\n',
-    )
+    _, view = fill_template(project)
     step_path = project / "recipes" / "fresh" / "01_first_step.py"
-    stub = step_path.read_text(encoding="utf-8")
-    first, rest = stub.split("\n", 1)
-    assert first.startswith("# TODO")
     code = make_views_step([view]).split("\n", 1)[1]  # without its own top comment
-    step_path.write_text("# Write the fresh view.\n" + rest.rstrip("\n") + "\n" + code, encoding="utf-8")
+    step_path.write_text(step_path.read_text(encoding="utf-8") + code, encoding="utf-8")
     out = driver.run("fresh")
     assert out.ok, out.message
     data = json.loads((project / "datapackage.json").read_text(encoding="utf-8"))
@@ -467,20 +472,16 @@ def test_template_note_after_the_blank_line_is_not_part_of_the_step_description(
     ]
 
 
+
 def test_template_recipe_toml_comments_are_not_part_of_the_description(driver, project):
     assert driver.new_recipe("fresh").ok
-    toml_path = project / "recipes" / "fresh" / "recipe.toml"
-    raw = add_raw_csv(project)
-    view = "useful-views/fresh.parquet"
-    text = toml_path.read_text(encoding="utf-8")
-    text = text.replace("TODO: one sentence saying what this recipe produces.", "A fresh recipe.")
-    text = text.replace("inputs  = []", f'inputs  = ["{raw}"]').replace("outputs = []", f'outputs = ["{view}"]')
-    toml_path.write_text(text, encoding="utf-8")
-    write(project, "recipes/fresh/01_first_step.py", make_views_step([view], "Write the fresh view."))
+    _, view = fill_template(project)
+    write(project, "recipes/fresh/01_first_step.py", make_views_step([view], "Some other comment."))
     out = driver.run("fresh")
     assert out.ok, out.message
     data = json.loads((project / "datapackage.json").read_text(encoding="utf-8"))
     assert data["recipes"][0]["description"] == "A fresh recipe."
+    assert data["recipes"][0]["steps"][0]["description"] == "Write the fresh view."
 
 
 def test_new_recipe_outside_a_project_is_refused(tmp_path):

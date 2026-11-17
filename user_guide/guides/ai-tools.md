@@ -40,6 +40,9 @@ read files, and `cookbook`, which writes only `cookbook.json`.
   `recipe.toml` and replace the stub step. Paths are the same strings in
   `recipe.toml` and in the step's code, relative to the project root, with
   forward slashes, and with no wildcards.
+- `recipe.toml` lists every step file in a `[[steps]]` block, with one
+  sentence saying what the step does to the data. To add, rename or remove
+  a step file, change its block too.
 - To build: `useful-views sync`. It refuses before changing anything if any
   recipe breaks a rule, and lists every problem at once.
 - After editing the code inside a step of recipe X, run

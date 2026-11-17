@@ -18,7 +18,7 @@ import pytest
 
 import useful_views as uvs
 
-from conftest import add_raw_csv, generated, make_views_step, write, write_recipe
+from conftest import add_raw_csv, generated, make_views_step, relist, write, write_recipe
 
 VIEW = "useful-views/out.parquet"
 
@@ -74,6 +74,7 @@ def test_failing_step_leaves_generated_files_unchanged(driver, project):
     assert driver.run("r").ok
     before = generated(project)
     write(project, "recipes/r/02_boom.py", step("Fail on purpose.", "raise SystemExit(5)\n"))
+    relist(project, "r")
     out = driver.run("r")
     assert_failed(out, driver, uvs.StepFailed, "02_boom.py")
     assert generated(project) == before
@@ -133,6 +134,7 @@ def test_failed_run_removes_declared_outputs(driver, project):
     assert all((project / o).exists() for o in outputs)
     # Now the outputs get written again, then a later step fails.
     write(project, "recipes/r/02_boom.py", step("Fail after writing outputs.", "raise SystemExit(1)\n"))
+    relist(project, "r")
     out = driver.run("r")
     assert_failed(out, driver, uvs.StepFailed, "02_boom.py")
     for o in outputs:
@@ -146,6 +148,7 @@ def test_failed_run_does_not_touch_other_recipes_views(driver, project):
     assert driver.run("b").ok
     a_view = (project / "useful-views/a.parquet").read_bytes()
     write(project, "recipes/b/02_boom.py", step("Fail.", "raise SystemExit(1)\n"))
+    relist(project, "b")
     assert not driver.run("b").ok
     assert (project / "useful-views/a.parquet").read_bytes() == a_view
     assert not (project / "useful-views/b.parquet").exists()
@@ -247,6 +250,7 @@ def test_work_folder_is_emptied_before_each_run(driver, project):
         "open('work/r/fresh.txt', 'w').write('new')\n"
     )
     write(project, "recipes/r/00_check.py", step("Check the work folder is empty.", body))
+    relist(project, "r")
     out = driver.run("r")
     assert out.ok, out.message
     assert not (project / "work/r/leftover.txt").exists()
@@ -509,6 +513,7 @@ def test_running_a_keeps_b_record_when_b_folder_edited(driver, project):
           'description = "A brand new description."\n'
           'inputs = ["raw/data.csv"]\noutputs = ["useful-views/b.parquet"]\n')
     write(project, "recipes/b/02_more.py", step("An extra step.", "pass\n"))
+    relist(project, "b")
     assert driver.run("a").ok
     assert record_of(project, "b") == b_record
     assert json.dumps(views_of(project, "b")) == json.dumps(b_views)
@@ -521,6 +526,7 @@ def test_running_a_keeps_b_record_byte_identical_in_file(driver, project):
     b_rec_json = json.dumps([r for r in data["recipes"] if r["name"] == "b"], indent=2, ensure_ascii=False)
     (project / "useful-views/b.parquet").unlink()
     write(project, "recipes/a/02_more.py", step("Another step in a.", "pass\n"))
+    relist(project, "a")
     assert driver.run("a").ok
     data2 = datapackage(project)
     assert json.dumps([r for r in data2["recipes"] if r["name"] == "b"], indent=2, ensure_ascii=False) == b_rec_json
@@ -602,6 +608,7 @@ def test_run_result_returns_warnings(project):
     write(project, "recipes/r/recipe.toml",
           f'description = "With an extra key."\ninputs = ["{raw}"]\noutputs = ["{VIEW}"]\nauthor = "me"\n')
     write(project, "recipes/r/01_make.py", make_views_step([VIEW]))
+    relist(project, "r")
     with pytest.warns(uvs.UsefulViewsWarning) as caught:
         result = uvs.run("r", root=project)
     assert any("author" in w for w in result.warnings)
