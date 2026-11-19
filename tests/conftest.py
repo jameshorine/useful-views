@@ -159,11 +159,12 @@ def driver(request, project: Path):
 
 @pytest.fixture
 def reference_project(tmp_path: Path) -> Path:
-    """A project named 'reference' holding the reference raw file and recipes,
-    not yet run."""
+    """A project named 'reference' holding the reference raw file, recipes and
+    sources.toml, not yet run."""
     root = uvs.init(tmp_path / "reference")
     shutil.copy(REFERENCE / "raw" / "pwt110_bra_deu_esp_usa.csv", root / "raw")
     shutil.copytree(REFERENCE / "recipes", root / "recipes", dirs_exist_ok=True)
+    shutil.copy(REFERENCE / "sources.toml", root)
     return root
 
 

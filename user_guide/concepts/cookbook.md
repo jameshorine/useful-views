@@ -157,6 +157,7 @@ so test `ok`, not `findings`. When `useful-views cookbook` (without
 | `generator` | `useful-views` |
 | `project` | The package name recorded in `datapackage.json`. It is chosen once, from the folder's name when the project is created, and kept, so a clone in a folder with another name writes the same file. |
 | `raw_inputs` | Every file under `raw/` a recorded recipe reads, sorted |
+| `sources` | Only when the project has a [`sources.toml`](sources.md): each source of those raw files, with the files it covers, as recorded in `datapackage.json` |
 | `recipes` | Every recorded recipe, upstream first, each exactly as its record in `datapackage.json`: name, description, path, inputs, outputs and steps |
 
 ## Common situations

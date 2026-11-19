@@ -34,6 +34,7 @@ EXAMPLES = {
         "description": "Penn World Table 11.0 extract for four countries, with two recipes.",
         "files": {
             "README.md": "7911d2ef0326d7f31f603a56bcefd571a8f1290c24e91085a609d3293cccb830",
+            "sources.toml": "ef3a204e6bff02a816ebd8027027cd1849c614a023601801e0e90995f6a31a40",
             "raw/pwt110_bra_deu_esp_usa.csv": "e7d172ce2594e4c2717aa9efd2558b2868745f5b1124861548d913ade61476eb",
             "recipes/pwt_panel/recipe.toml": "01813ebc8a456dff3ac73ca291febf0648778f15f1b877745b445050657c81f8",
             "recipes/pwt_panel/01_reshape_long.py": "84804eb6aff7fab434e548cc237492f606e32c1ab54321786d3b5d7af908594d",

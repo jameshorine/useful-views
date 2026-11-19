@@ -21,9 +21,10 @@ import pyarrow as pa
 from .errors import OutputError, ProjectError, RecipeRefused, StepFailed, warn
 from .fingerprints import DataHashError
 from .lock import project_lock
-from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact, name_key
+from .paths import CATALOG, DATAPACKAGE, RAW, RECIPES, VIEWS, WORK, exists_exact, name_key
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
+from .sources import load_sources, undescribed, undescribed_note, unreadable_note, with_sources
 from .record import (
     assemble, describe_view, differs_from_record, fingerprints_differ, input_fingerprints, known_fingerprint,
     load_datapackage, retry, run_order, split_resources, understood, write_generated,
@@ -703,7 +704,8 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         all_views = {p: r for p, r in old_views.items() if r["producedBy"].get("recipe") != name}
         all_views.update(views)
         all_raws = {**old_raws, **raw_described}
-        written = assemble(project, records, all_views, all_raws, data)
+        sources = load_sources(project)
+        written = with_sources(assemble(project, records, all_views, all_raws, data), sources, recorded=data)
         write_generated(project, written)
     except BaseException:
         # On any failure from here on, a failed run leaves its views absent.
@@ -716,6 +718,13 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
     if not in_sync:
         from .cookbooks import stale_warning
 
+        if sources.error is not None:
+            warn(unreadable_note(sources), collected)
+        for message in sources.warnings:
+            warn(message, collected)
+        missing = undescribed(sources, {p for p in loaded.inputs if p.startswith(f"{RAW}/")})
+        if missing:
+            warn(undescribed_note(missing), collected)
         note = stale_warning(project)
         if note:
             warn(note, collected)

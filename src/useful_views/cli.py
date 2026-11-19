@@ -363,8 +363,8 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
                     print("datapackage.json shows recipes made from older versions of the views they read "
                           "(a recipe ran again, and the recipes that read its views did not):")
                 else:
-                    print("The project is not in sync: recipe folders differ from their records in "
-                          "datapackage.json, or views were made from older data:")
+                    print("The project is not in sync: recipe folders or sources.toml differ from what "
+                          "datapackage.json records, or views were made from older data:")
                 for finding in result.findings:
                     print(f"  {finding.kind}: {finding.message.splitlines()[0]}")
                 if all(syncable(f) for f in result.findings):

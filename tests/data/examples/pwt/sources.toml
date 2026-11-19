@@ -1,0 +1,21 @@
+# Where each raw file comes from. useful-views copies these details into
+# datapackage.json, the catalog and the cookbook.
+
+[[sources]]
+title = "Penn World Table 11.0 (extract for Brazil, Germany, Spain and the United States)"
+files = ["raw/pwt110_bra_deu_esp_usa.csv"]
+url = "https://www.rug.nl/ggdc/productivity/pwt/"
+doi = "10.34894/FABVLR"
+access = """
+All variables and all years (1950 to 2023) for the four countries, exported
+from the PWT online data access tool and unchanged apart from its name:
+https://pwt-data-tool.streamlit.app/?page=Thematic+select&countries=USA%2CDEU%2CESP%2CBRA&variables=All&years=All"""
+cost = "Free"
+obtained = 2026-10-09
+license = "CC-BY-4.0"
+license_url = "https://creativecommons.org/licenses/by/4.0/"
+citation = """
+Feenstra, Robert C., Robert Inklaar and Marcel P. Timmer (2015), "The Next
+Generation of the Penn World Table." American Economic Review, 105(10),
+3150-3182. https://doi.org/10.1257/aer.20130954"""
+shared = true
