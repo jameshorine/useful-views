@@ -63,7 +63,7 @@ usage: useful-views example [-h] [-C PATH] [--json] name [path]
 
 ## `useful-views new-recipe`
 
-Create recipes/NAME/ with a template recipe.toml and a stub step, 01_first_step.py. Both say TODO and are refused until you fill them in.
+Create recipes/NAME/ with a template recipe.toml, which lists one step, and that step's stub file, 01_first_step.py. The recipe is refused until you fill in recipe.toml: its inputs and outputs, and one sentence in place of each TODO description.
 
 ```text
 usage: useful-views new-recipe [-h] [-C PATH] [--json] name

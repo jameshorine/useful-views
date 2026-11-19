@@ -12,7 +12,7 @@ import sys
 import pytest
 
 import useful_views as uvs
-from useful_views.recipe import resolve_name, step_description
+from useful_views.recipe import resolve_name
 from useful_views.record import write_files
 
 from conftest import add_raw_csv, make_views_step, write, write_recipe
@@ -51,19 +51,6 @@ def test_steps_in_other_languages_are_refused_whatever_the_case(project, filenam
     assert err.value.rule == 3
 
 
-def test_inline_script_metadata_is_not_the_description():
-    text = (
-        "# /// script\n# requires-python = \">=3.11\"\n# dependencies = [\"polars\"]\n# ///\n\n"
-        "# Keep the rows from 1990 on.\nimport polars\n"
-    )
-    assert step_description(text) == "Keep the rows from 1990 on."
-
-
-def test_decoration_lines_around_the_description():
-    assert step_description("# ----------\n# Clean the data.\n# ----------\nimport x\n") == "Clean the data."
-    assert step_description("# ===\n# Clean.\n# ===\n# Author: someone\n") == "Clean."
-    jupytext = "# ---\n# jupyter:\n#   kernelspec:\n#     name: python3\n# ---\n\n# Clean the data.\n"
-    assert step_description(jupytext) == "Clean the data."
 
 
 # --- recipe names -------------------------------------------------------------------
@@ -330,9 +317,3 @@ def test_merge_advice_names_only_files_that_exist(project):
         uvs.check(root=project)
     assert "git checkout --ours datapackage.json useful-views/README.md)" in str(err.value)
     assert "cookbook" not in str(err.value)
-
-
-def test_a_jupytext_header_with_other_keys_first():
-    text = ("# ---\n# title: Panel\n# jupyter:\n#   kernelspec:\n#     name: python3\n# ---\n\n"
-            "# Build the panel.\n")
-    assert step_description(text) == "Build the panel."

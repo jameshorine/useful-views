@@ -41,12 +41,19 @@ useful-views/      # the views each recipe declares; README.md there is the gene
 Create a recipe with `useful-views new-recipe <name>` (lowercase letters,
 digits and underscores), then edit the two files it makes.
 
-`recipes/<name>/recipe.toml` says what the recipe is, reads and makes:
+`recipes/<name>/recipe.toml` says what the recipe is, reads and makes, and
+lists its steps:
 
 ```toml
 description = "Country-year panel of core Penn World Table variables."
 inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
 outputs = ["useful-views/pwt-panel.parquet"]
+
+[[steps]]
+file = "01_reshape_long.py"
+description = """
+Reshape the wide export (one column per year) into one row per country,
+variable and year."""
 ```
 
 - `description`: one sentence saying what the recipe produces.
@@ -55,13 +62,21 @@ outputs = ["useful-views/pwt-panel.parquet"]
 - `outputs`: at least one `.parquet` file directly inside `useful-views/`.
 - Paths start at the project root and use forward slashes. Each is the
   same string the steps use in their code to read or write that file.
+- `[[steps]]`: one block for each step file, in the order they run, with
+  `file`, the file's name, and `description`, one sentence saying what the
+  step does to the data. Keep these blocks at the end of the file: TOML
+  puts every line below a `[[steps]]` header into that step. Use triple
+  quotes, `"""..."""`, for a description that runs over several lines or
+  has double quotes in it. A backslash starts an escape: write `\\`, or use
+  triple single quotes, `'''...'''`, which keep it as written.
 
 Each step is a file named `NN_name.py`: two digits, an underscore and a
-name, like `01_reshape_long.py`. Steps run in numeric order. The comment
-block at the very top of the file says what the step does, and is required:
+name, like `01_reshape_long.py`. Steps run in numeric order. Every step
+file is listed in `recipe.toml`, so to add, rename or remove a step, change
+both the file and its `[[steps]]` block. The step file itself is just code,
+saved as UTF-8:
 
 ```python
-# Reshape the wide export (one column per year) into one row per country and year.
 import polars as pl
 
 wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")
@@ -101,7 +116,7 @@ run that recipe first. `sync` works on the whole project, like `uv sync`.
 
 | When you... | Do this |
 |---|---|
-| add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync` |
+| add a recipe or a step, or edit a `recipe.toml` (a step's description included) | `useful-views sync` |
 | edit the code inside a step | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`) |
 | replace a file in `raw/` under the same name | `useful-views sync --all` |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |

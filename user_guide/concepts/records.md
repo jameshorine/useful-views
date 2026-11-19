@@ -139,10 +139,10 @@ most views, and about 2 minutes for a 15 GB one (see
 ## useful-views/README.md
 
 The catalog is generated from `datapackage.json` alone. For each view it
-gives the recipe's description, its inputs, its numbered steps (their top
-comments) and its columns with their types. It is committed to git, so a
-reviewer sees what each view is and how it was made without running
-anything.
+gives the recipe's description, its inputs, its numbered steps (with their
+descriptions from `recipe.toml`) and its columns with their types. It is
+committed to git, so a reviewer sees what each view is and how it was made
+without running anything.
 
 ## cookbook.json
 

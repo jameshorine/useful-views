@@ -21,7 +21,7 @@ columns and types, and each view's fingerprint, so it changes whenever a
 view's data changes. The cookbook is written for
 people and reviewers: one file that reads top to bottom as the method of the
 project, upstream first, and that changes in git when a recipe's
-`recipe.toml`, its list of steps or a step's top comment changes (not when
+description, inputs, outputs or steps (their descriptions included) change (not when
 only the code inside a step changes; see [What is next](#what-is-next)). A reviewer reading a pull request, an examiner reading a thesis
 repository, or an AI assistant opening the project sees what is made from
 what without running anything.
@@ -64,9 +64,9 @@ with 1, and lists why, when:
 - `cookbook.json` is missing, or differs from the committed
   `datapackage.json`;
 - a recipe folder no longer matches its record: a recipe added or removed,
-  its `recipe.toml` edited, a step added, removed or renamed, a step's top
-  comment changed, or an output dropped, and committed without running
-  `sync`;
+  its description, inputs or outputs changed in `recipe.toml`, a step added,
+  removed or renamed, a step's description changed, or an output dropped,
+  and committed without running `sync`;
 - a recipe's record shows it read a view whose data has changed since
   (`out-of-date`, reason `input-data-changed`): a recipe upstream of it ran
   again (with `useful-views run`, or in a sync that stopped) and the result

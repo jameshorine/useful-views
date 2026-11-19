@@ -8,11 +8,11 @@ title: "Rules"
 
 ## Rule 1: recipe.toml is complete
 
-recipe.toml exists and can be read. It has a one-sentence description that does not start with TODO, and inputs and outputs, each a list of at least one path with no path listed twice.
+recipe.toml exists and can be read. It has a one-sentence description that does not start with TODO; inputs and outputs, each a list of at least one path with no path listed twice; and at least one [[steps]] block, each with the file name of a step and a one-sentence description that does not start with TODO.
 
-## Rule 2: Steps are numbered and described
+## Rule 2: Steps are numbered and listed
 
-The recipe has at least one step file named NN_name.py. Each starts with a # comment saying what it does, not starting with TODO, and no two steps share a number.
+The step files, named NN_name.py, are exactly the files recipe.toml lists under [[steps]], in the order of their numbers; no two steps share a number; and each can be read and is saved as UTF-8.
 
 ## Rule 3: Steps are Python files
 

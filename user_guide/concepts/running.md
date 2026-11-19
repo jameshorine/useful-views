@@ -127,7 +127,7 @@ missing; to gate such a job, use `useful-views cookbook --check` (see
 
 | When you... | Do this |
 |---|---|
-| add a recipe, or edit a `recipe.toml` or a step's top comment | `useful-views sync` |
+| add a recipe, or a step (its file and its `[[steps]]` block in `recipe.toml`), or edit a `recipe.toml` (a step's description included) | `useful-views sync` |
 | edit the code inside a step | `useful-views run` that recipe, then what it says to run next (or `useful-views sync --all`) |
 | replace or correct a file in `raw/` under the same name | `useful-views sync --all` (or give the new version a new file name, and change the path in `inputs` and in the step that reads it; then `sync` alone notices) |
 | `git pull`, merge, or switch branches | `useful-views sync --all` |

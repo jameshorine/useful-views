@@ -244,7 +244,7 @@ def test_sync_does_not_warn_about_recipes_it_runs_itself(project):
 
 def test_a_sync_that_stops_removes_views_made_from_views_it_replaced(project):
     chain(project)
-    # b's code now fails (its top comment, and so its record, is unchanged);
+    # b's code now fails (its listing in recipe.toml, and so its record, is unchanged);
     # a's record and data have changed, so sync runs a, then b and c, which read it.
     write(project, "recipes/b/01_make.py", "# Write a small table to each output.\nraise SystemExit('boom')\n")
     change_a(project)

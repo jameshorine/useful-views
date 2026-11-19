@@ -21,7 +21,7 @@ import pyarrow as pa
 from .errors import OutputError, ProjectError, RecipeRefused, StepFailed, warn
 from .fingerprints import DataHashError
 from .lock import project_lock
-from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact
+from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact, name_key
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
 from .record import (
@@ -369,16 +369,14 @@ def _step_failure(step: Step, code: int, stderr: str, recipe: str, project: Path
 def _actual_name(project: Path, rel: str) -> str | None:
     """The name on disk of a file that differs from `rel` only in letter case
     or in how accented letters are encoded, if there is one."""
-    import unicodedata
-
     folder, _, filename = rel.rpartition("/")
-    want = unicodedata.normalize("NFC", filename).casefold()
+    want = name_key(filename)
     try:
         names = os.listdir(project / folder)
     except OSError:
         return None
     for name in names:
-        if name != filename and unicodedata.normalize("NFC", name).casefold() == want:
+        if name != filename and name_key(name) == want:
             return f"{folder}/{name}"
     return None
 

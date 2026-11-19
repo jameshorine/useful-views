@@ -1,6 +1,3 @@
-# Compute GDP per capita (rgdpe / pop, in 2021 US$), its annual growth in percent
-# (from rgdpna / pop, the series PWT recommends for growth over time), and its
-# level relative to the United States in the same year.
 import polars as pl
 
 panel = pl.read_parquet("useful-views/pwt-panel.parquet")

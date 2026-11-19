@@ -14,9 +14,11 @@ from .record import write_atomic
 def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
     """Create `recipes/<name>/` with a template `recipe.toml` and a stub step.
 
-    Both files say TODO and explain what to fill in. Until you replace the
-    TODOs, `run` and `sync` refuse the recipe (rules 1 and 2), and `check`
-    reports it as refused.
+    `recipe.toml` lists the stub step, `01_first_step.py`, in a `[[steps]]`
+    block. Its description and the step's description say TODO, and its
+    inputs and outputs are empty: until you fill them in, `run` and `sync`
+    refuse the recipe (rule 1) and `check` reports it as refused. The stub
+    file holds only a note.
 
     Args:
         name: Lowercase letters, digits and underscores, like `"pwt_panel"`,

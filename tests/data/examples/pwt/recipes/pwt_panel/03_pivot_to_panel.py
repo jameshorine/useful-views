@@ -1,4 +1,3 @@
-# Spread the variables into columns, giving one row per country and year.
 import polars as pl
 
 CORE = ["rgdpe", "rgdpo", "rgdpna", "pop", "emp", "avh", "hc", "rtfpna"]

@@ -1,5 +1,3 @@
-# Keep eight core variables: three measures of GDP, population, employment,
-# hours worked, human capital and TFP.
 import polars as pl
 
 CORE = ["rgdpe", "rgdpo", "rgdpna", "pop", "emp", "avh", "hc", "rtfpna"]

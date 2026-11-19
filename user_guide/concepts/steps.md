@@ -7,9 +7,20 @@ work in a project. A step does at least one real transformation of the
 data. There is no maximum: it may do many, and you decide where one step
 ends and the next begins. A [recipe](recipes.md) runs its steps in order.
 
+The recipe's `recipe.toml` lists each step, with one sentence saying what it
+does:
+
+```toml
+[[steps]]
+file = "01_reshape_long.py"
+description = """
+Reshape the wide export (one column per year) into one row per country,
+variable and year."""
+```
+
+The step file, `01_reshape_long.py`, is the code:
+
 ```python
-# Reshape the wide export (one column per year) into one row per country,
-# variable and year.
 import polars as pl
 
 wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")
@@ -22,7 +33,12 @@ long.write_parquet("work/pwt_panel/long.parquet")
 ```
 
 A step is an ordinary script. It does not import `useful_views`, and it can
-use any data library installed in the environment.
+use any data library installed in the environment. It may start with
+anything (imports, a docstring or comments): useful-views does not read its
+comments. It must be saved as UTF-8 (a byte-order mark and Windows line
+endings are fine). A step file in another encoding, or one that cannot be
+read, is refused under rule 2 before anything on disk changes, even if a
+coding line declares another encoding.
 
 ## Names
 
@@ -32,46 +48,41 @@ numbering are fine, so you can add a step between `01_` and `02_` later by
 renumbering, or leave room (`10_`, `20_`, ...). Two steps may not share a
 number.
 
+`recipe.toml` lists exactly the step files in the folder, in the order of
+their numbers: one `[[steps]]` block for each, whose `file` is the file's
+name, letter case included. The blocks go at the end of `recipe.toml`, after
+`description`, `inputs` and `outputs` (see [Recipes](recipes.md)). So to add
+a step, add its file and a `[[steps]]` block for it among the other blocks,
+in the position of its number; to rename or renumber one, rename the file and
+change its `file =` to match; to remove one, delete both. Otherwise the
+recipe is refused, with a message that names what to fix.
+
 A file named almost like a step is not run, and `run` warns about it:
 `1_clean.py`, `001_clean.py`, `01-clean.py`, `01 clean.py`, `01_clean.PY`,
 `01_clean` with no extension, or `01_clean.py.txt` (an extension your editor
-added). An R, notebook, Quarto, Julia or Stata file named like a step
-(`02_clean.R`, `02_explore.ipynb`, ...) is refused: steps must be Python
-files. Any other file in the recipe folder, such as notes, editor backups
-(`.bak`, `~`, `.swp`) or a helper module like `helpers.py`, is ignored, with
-two exceptions. A `.py` file whose name starts with a digit, such as
+added). Listed in `recipe.toml`, such a file is refused instead. An R,
+notebook, Quarto, Julia or Stata file named like a step (`02_clean.R`,
+`02_explore.ipynb`, ...) is refused: steps must be Python files. Any other
+file in the recipe folder, such as notes, editor backups (`.bak`, `~`,
+`.swp`) or a helper module like `helpers.py`, is ignored, with two
+exceptions. A `.py` file whose name starts with a digit, such as
 `2020_codes.py`, is not run but gets the warning above. A copy that keeps
 the `NN_` prefix and `.py`, such as `01_clean copy.py` or `09_old_clean.py`,
-is a step: it is refused if its number is taken, and run otherwise. Keep old
-versions of a step outside the recipe folder.
+is a step: the recipe is refused if its number is taken or `recipe.toml`
+does not list it. Keep old versions of a step outside the recipe folder.
 
 ## The description
 
-The block of `#` lines at the very top of the file is the step's
-description. Its lines are joined with spaces into one line, so a sentence
-can wrap across several `#` lines. It is required, and must not start with
-TODO. It becomes the step's description in `datapackage.json`, in the catalog
-and in `cookbook.json`, so write it for a reader who has not seen the code:
-what the step does to the data, not how.
+A step's description is the `description` in its `[[steps]]` block in
+`recipe.toml`: one sentence saying what the step does to the data. It is
+required, and must not start with TODO. It becomes the step's description in
+`datapackage.json`, in the catalog and in `cookbook.json`, so write it for a
+reader who has not seen the code: what the step does to the data, not how.
 
-Lines before it are skipped: blank lines, a shebang (`#!`), a coding line,
-notebook cell markers (`# %%`, `# In[1]:`), a Jupytext header, an inline
-script metadata block (`# /// script` ... `# ///`) and decoration lines such
-as `# -----`. A cell marker is skipped as a whole line, including any title
-written after `# %%`, so put the description on its own `#` lines below the
-marker. A blank line, a cell marker or a decoration line after the
-description ends it.
-
-Any other `#` line at the top counts as description, including a licence
-header (`# SPDX-License-Identifier: MIT`) and linter pragmas (`# ruff:
-noqa`): put the description first, then a blank line, then those. A
-docstring is not skipped and is never read as the description: put the `#`
-comment before any docstring or code, or the step is refused as having no
-top comment.
-
-A step file must be saved as UTF-8 (a byte-order mark and Windows line
-endings are fine). A file in another encoding is refused, even with a coding
-line that declares it.
+Its spaces and line breaks are joined into one line, so a long description
+can be written over several lines in triple quotes, as above. Comments and
+docstrings in the step file are not read as the description. See
+[Recipes](recipes.md) for the rest of `recipe.toml`.
 
 Changing a step's description is a change `sync` notices: it runs the recipe
 again, and every recipe downstream of it.
@@ -178,4 +189,7 @@ recorded run. (Only when a recipe is about to read such a view do `run` and
 `sync` see that it is not the recorded one, and refuse.) Afterwards, run `useful-views run <recipe>` and then what it says to
 run next, or `useful-views sync --all`.
 
-Rules 2 and 3 are about steps; [Rules](../reference/rules.md) lists them all.
+Three rules are about steps: rule 1 covers their `[[steps]]` blocks in
+`recipe.toml`, rule 2 that the step files match those blocks and are saved as
+UTF-8, and rule 3 that steps are Python files. [Rules](../reference/rules.md)
+lists them all.

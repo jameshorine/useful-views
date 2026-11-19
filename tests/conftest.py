@@ -7,7 +7,9 @@ once through the Python API and once through the command line
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -179,18 +181,71 @@ def toml_list(paths) -> str:
     return "[" + ", ".join(f'"{p}"' for p in paths) + "]"
 
 
+# The [[steps]] block write_recipe writes for its default step, for tests that
+# write recipe.toml by hand.
+ONE_STEP = '\n[[steps]]\nfile = "01_make.py"\ndescription = "Write a small table to each output."\n'
+
+
+def first_comment(code: str) -> str:
+    """The # lines at the top of a test step's code, joined: what the test
+    means as the step's description."""
+    lines = [line.strip() for line in code.split("\n")]
+    while lines and (not lines[0] or lines[0].startswith("#!") or re.match(r"^#.*coding[:=]", lines[0])):
+        lines.pop(0)
+    parts = []
+    for line in lines:
+        if not line.startswith("#"):
+            break
+        parts.append(line.lstrip("#").strip())
+    return " ".join(" ".join(parts).split())
+
+
+def steps_toml(steps: dict[str, str]) -> str:
+    """A [[steps]] block for each file in `steps` named like a step, in
+    numeric order, described by its first comment."""
+    blocks = []
+    for filename in sorted(steps):
+        if re.fullmatch(r"[0-9]{2}_.+\.py", filename):
+            description = first_comment(steps[filename]) or f"Step {filename}."
+            blocks.append(f"\n[[steps]]\nfile = {json.dumps(filename)}\ndescription = {json.dumps(description)}\n")
+    return "".join(blocks)
+
+
+def relist(root: Path, name: str) -> Path:
+    """Rewrite the [[steps]] of recipes/<name>/recipe.toml to list the step
+    files now in its folder, each described by its first comment: for tests
+    that add a step file, or write recipe.toml by hand."""
+    folder = root / "recipes" / name
+    toml = (folder / "recipe.toml").read_text(encoding="utf-8")
+    head = re.split(r"(?m)^\s*\[\[\s*steps\s*\]\]", toml, maxsplit=1)[0].rstrip("\n") + "\n"
+    files = {f.name: f.read_text(encoding="utf-8", errors="replace") for f in folder.iterdir() if f.is_file()}
+    return write(root, f"recipes/{name}/recipe.toml", head + steps_toml(files))
+
+
 def write_recipe(root: Path, name: str, *, inputs, outputs, steps: dict[str, str] | None = None,
-                 description: str | None = None) -> Path:
+                 description: str | None = None, listed: str | None = None) -> Path:
     """Write recipes/<name>/ with a recipe.toml and step files. By default it
-    has one step that writes a small parquet table to every output."""
+    has one step that writes a small parquet table to every output. Every
+    file in `steps` named like a step is listed in recipe.toml, described by
+    its first comment, with any step file already there; `listed` replaces
+    that [[steps]] text."""
     description = description or f"Test recipe {name}."
-    write(root, f"recipes/{name}/recipe.toml",
-          f'description = "{description}"\ninputs = {toml_list(inputs)}\noutputs = {toml_list(outputs)}\n')
     if steps is None:
         steps = {"01_make.py": make_views_step(outputs)}
     for filename, code in steps.items():
         write(root, f"recipes/{name}/{filename}", code)
+    write(root, f"recipes/{name}/recipe.toml",
+          f'description = "{description}"\ninputs = {toml_list(inputs)}\noutputs = {toml_list(outputs)}\n'
+          + (listed or ""))
+    if listed is None:
+        relist(root, name)
     return root / "recipes" / name
+
+
+def write_toml(root: Path, rel: str, text: str) -> Path:
+    """Write a recipe.toml by hand, then list the step files in its folder."""
+    write(root, rel, text)
+    return relist(root, rel.split("/")[1])
 
 
 def make_views_step(outputs, description: str = "Write a small table to each output.") -> str:

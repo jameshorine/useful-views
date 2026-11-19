@@ -4,6 +4,40 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
+## Unreleased
+
+- Breaking: `recipe.toml` now lists the recipe's steps, so it describes
+  the whole recipe: its inputs, its outputs, and its steps in the order they
+  run, with what each does. Each
+  step is a `[[steps]]` block at the end of the file, with `file`, the step
+  file's name, and `description`, one sentence saying what the step does
+  (over several lines in triple quotes, if long). The blocks must list
+  exactly the `NN_name.py` files in the folder, in the order of their
+  numbers; rule 2 is now "Steps are numbered and listed". `new-recipe`
+  writes one block, for `01_first_step.py`.
+- Breaking: rule 1 now also covers the `[[steps]]` blocks. A recipe with no
+  `[[steps]]`, or a step description that is missing or starts with TODO,
+  is refused under rule 1 (these were rule 2), so `RecipeRefused.rule` and
+  the `rule` in `--json` output are 1 for them.
+- The top comment of a step file is no longer its description, and its
+  comments are not read. useful-views reads a step file only to check that
+  it can be read and is saved as UTF-8 (rule 2), so it may start with
+  anything (imports, a docstring or comments). The records hold the same
+  fields as before: each step's `name`, `path` and `description`.
+- The `pwt` example uses the new format: `example` downloads tag
+  `examples-v3` of useful-views-data.
+
+### Upgrading
+
+- In each `recipe.toml`, add a `[[steps]]` block at the end for each step
+  file, in order, with its old top comment as the description. Until you
+  do, `run` and `sync` refuse the recipe and `check` reports it, with a
+  block to paste for each step file. Copied word for word, the descriptions
+  match the records, so `sync` has nothing to run. A comment over several
+  lines, or one with double quotes in it, goes in triple quotes
+  (`"""..."""`); one with a backslash goes in triple single quotes
+  (`'''...'''`), which keep it as written. See "Recipes" in the user guide.
+
 ## 0.2.0 (2026-10-30)
 
 Fingerprints: useful-views now records what each view contains, and uses it

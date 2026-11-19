@@ -54,7 +54,7 @@ holds the fingerprint of the panel it read. `run` warns, naming
 runs it.
 
 What is not noticed is the fix itself, until the recipe runs. A recipe's
-record holds its steps' names and top comments, not their code, so if you
+record holds its steps' names and descriptions, not their code, so if you
 fix the step but do not run it, `check` says `No problems found.`
 
 ### A corrected raw file
@@ -94,9 +94,11 @@ useful-views sync --all
 
 What useful-views does catch today:
 
-- an edited `recipe.toml`, a step added, removed or renamed, and a step's
-  changed top comment: `check` reports the recipe as out of date, and `sync`
-  runs it, then every recipe downstream of it;
+- a changed description, inputs or outputs in `recipe.toml`, a step added,
+  removed or renamed, and a step's changed description: `check` reports the
+  recipe as out of date, and `sync` runs it, then every recipe downstream of
+  it (an output you only remove is different: `sync` deletes that view and
+  drops it from the record, without running the recipe again);
 - a view made from an older version of another: the fingerprints in
   `datapackage.json` show it (`input-data-changed`), so `check` reports it,
   `sync` runs its recipe, and `cookbook --check` fails, even in CI without
