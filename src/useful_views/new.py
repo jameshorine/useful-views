@@ -14,18 +14,20 @@ from .record import write_atomic
 def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
     """Create `recipes/<name>/` with a template `recipe.toml` and a stub step.
 
+    Command line: `useful-views new-recipe NAME`.
+
     `recipe.toml` lists the stub step, `01_first_step.py`, in a `[[steps]]`
-    block. Its description and the step's description say TODO, and its
-    inputs and outputs are empty: until you fill them in, `run` and `sync`
-    refuse the recipe (rule 1) and `check` reports it as refused. The stub
-    file holds only a note.
+    block. The stub holds only a note. The recipe's description and the
+    step's say TODO, and the inputs and outputs are empty. Until you fill
+    them in, `run` and `sync` refuse the recipe (rule 1), and `check`
+    reports it as refused.
 
     Args:
-        name: Lowercase letters, digits and underscores, like `"pwt_panel"`,
-            and not a name Windows reserves (con, aux, nul, prn, com1...) or
-            `__pycache__`.
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
+        name: Lowercase letters, digits and underscores, like `"pwt_panel"`.
+            Not `__pycache__`, or a name Windows reserves (con, aux, nul,
+            prn, com1...).
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
 
     Returns:
         The new recipe folder.
@@ -33,6 +35,15 @@ def new_recipe(name: str, *, root: str | Path | None = None) -> Path:
     Raises:
         RecipeRefused: The name is not allowed, or the folder already exists.
         ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> folder = uvs.new_recipe("my_recipe")
+        >>> sorted(path.name for path in folder.iterdir())
+        ['01_first_step.py', 'recipe.toml']
+        >>> [(finding.kind, finding.rule) for finding in uvs.check()]
+        [('refused', 1)]
+        ```
     """
     project = find_root(root)
     problem = recipe_name_problem(name)

@@ -1,0 +1,278 @@
+---
+title: "Try it: two fingerprints"
+---
+
+```{python}
+#| include: false
+# Setup, hidden from readers. Every .qmd page starts with this same cell
+# (tests/test_docs_pages.py checks). It works in a fresh folder, reads the
+# example project from this repository's tests/data (offline), and defines
+# sh(), which runs a command shown on the page and prints its output.
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import warnings
+from pathlib import Path
+
+import useful_views
+
+_mirror = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data"
+if not (_mirror / "examples" / "pwt").is_dir():
+    raise RuntimeError(f"no example data at {_mirror}")
+os.environ["USEFUL_VIEWS_DATA_URL"] = str(_mirror)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+WORK = str(Path(tempfile.mkdtemp(prefix="useful-views-docs-")).resolve())
+os.chdir(WORK)
+warnings.formatwarning = lambda message, category, *args, **kwargs: f"{category.__name__}: {message}\n"
+
+
+def sh(line, expect=0):
+    """Run one command shown on the page (useful-views, cd or cat) and print
+    its output as a terminal would. Fails if it exits with another code."""
+    word, _, rest = line.partition(" ")
+    if word == "cd":
+        os.chdir(shlex.split(rest)[0])
+        return
+    if word == "cat":
+        print(Path(shlex.split(rest)[0]).read_text(encoding="utf-8"), end="")
+        return
+    if word != "useful-views":
+        raise ValueError(f"sh() runs useful-views, cd and cat, not {line!r}")
+    done = subprocess.run(
+        [sys.executable, "-m", "useful_views", *shlex.split(rest)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+    )
+    out = done.stdout.replace(WORK, "/path/to")
+    if out.strip():
+        print(out, end="")
+    if done.returncode != expect:
+        raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
+```
+
+A view can have two fingerprints, a **file hash** and a **data hash**. This
+page computes both by hand, in a few lines of Python, to show what each one
+notices. At the end, you compare your result with useful-views' own data
+hash.
+
+| Fingerprint | Computed from | Answers |
+|---|---|---|
+| **File hash** | the file's bytes | Is this the very file that was recorded? |
+| **Data hash** | the column names and types, and the values, in a fixed form | Does this view hold the same data as the recorded one, whoever made it? |
+
+useful-views records the data hash of every view it makes. The file hash is
+planned ([#32](https://github.com/jameshorine/useful-views/issues/32)).
+[Stale views](../concepts/stale-views.md) explains what fingerprints are
+for.
+
+You need polars and pyarrow, which the [quickstart](../quickstart.qmd) setup
+installs. Work in a new, empty folder. Run each block in order, in one
+Python session or notebook.
+
+## Two fingerprints
+
+```{python}
+import hashlib
+
+import polars as pl
+import pyarrow.parquet as pq
+
+
+def file_hash(path):
+    """SHA-256 of the file's bytes."""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def data_hash(path):
+    """SHA-256 of the table's contents: the column names and types, then
+    every value, whatever library wrote the file."""
+    table = pq.read_table(path)
+    h = hashlib.sha256()
+    for field in table.schema:
+        # Libraries store text as string, large_string or string_view: the same data.
+        kind = "string" if "string" in str(field.type) else str(field.type)
+        h.update(f"{field.name}:{kind};".encode())
+    for column in table.columns:
+        for value in column.to_pylist():
+            h.update(repr(value).encode() + b";")
+    return h.hexdigest()
+```
+
+This `data_hash` reads the whole table, value by value. That is fine for a
+small example. A real one works a column at a time, and is much faster.
+
+## The readings
+
+Temperatures from two field sensors. One reading, station B at 06:00, was
+recorded in degrees Fahrenheit by mistake. 56.8 °F is 13.8 °C.
+
+```{python}
+readings = pl.DataFrame({
+    "station": ["A", "A", "B", "B"],
+    "time": ["06:00", "07:00", "06:00", "07:00"],
+    "temp_c": [14.2, 15.1, 56.8, None],
+})
+readings.write_parquet("readings.parquet")
+```
+
+## 1. The same data, saved by two libraries
+
+Save the same table again, this time with pyarrow, as a step written with
+another library would.
+
+```{python}
+pq.write_table(readings.to_arrow(), "readings_pyarrow.parquet")
+print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_pyarrow.parquet"))
+print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") != file_hash("readings_pyarrow.parquet")
+assert data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet")
+```
+
+
+The data is the same, and the bytes differ. Each library writes its own name
+into the file, and encodes and compresses the columns its own way. A library
+upgrade can do the same. So the file hash alone is not enough. A file hash
+recorded on your computer can differ from a co-author's for the very same
+results, while the data hash matches.
+
+## 2. The same library, saved twice
+
+```{python}
+readings.write_parquet("readings_again.parquet")
+print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_again.parquet"))
+print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_again.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") == file_hash("readings_again.parquet")
+assert data_hash("readings.parquet") == data_hash("readings_again.parquet")
+```
+
+
+On one computer, with the same library, the file hash is reliable. It is also
+much cheaper, since it needs no understanding of the file. That makes it the
+right check for "is this still the file that was recorded?"
+
+## 3. A real change: fixing the unit error
+
+```{python}
+fixed = readings.with_columns(
+    pl.when((pl.col("station") == "B") & (pl.col("time") == "06:00"))
+    .then(((pl.col("temp_c") - 32) * 5 / 9).round(1))
+    .otherwise(pl.col("temp_c"))
+    .alias("temp_c")
+)
+fixed.write_parquet("readings_fixed.parquet")
+print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_fixed.parquet"))
+print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_fixed.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") != file_hash("readings_fixed.parquet")
+assert data_hash("readings.parquet") != data_hash("readings_fixed.parquet")
+```
+
+
+One value changed, and both fingerprints changed. Either one would tell
+useful-views that a view made from the old readings is now stale.
+
+## 4. The same rows, in another order
+
+```{python}
+fixed.reverse().write_parquet("readings_reversed.parquet")
+print("data hash equal:", data_hash("readings_fixed.parquet") == data_hash("readings_reversed.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert data_hash("readings_fixed.parquet") != data_hash("readings_reversed.parquet")
+```
+
+
+The same rows in another order give another data hash. Many operations
+return rows in an order that can change from one run to the next, such as
+`group_by` in polars (unless you pass `maintain_order=True`) and some joins.
+A step that sorts its result before writing it, for example with
+`.sort("station", "time")`, gives the same fingerprint every time.
+
+## 5. The last digit of a number
+
+Add the same three numbers in two orders, as a computation split across
+several threads might:
+
+```{python}
+first = (0.1 + 0.2) + 0.3
+second = 0.1 + (0.2 + 0.3)
+print(first, second)
+pl.DataFrame({"total": [first]}).write_parquet("total_a.parquet")
+pl.DataFrame({"total": [second]}).write_parquet("total_b.parquet")
+print("data hash equal:", data_hash("total_a.parquet") == data_hash("total_b.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert (str(first), str(second)) == ("0.6000000000000001", "0.6")
+assert data_hash("total_a.parquet") != data_hash("total_b.parquet")
+```
+
+
+Shown to a few decimal places, both are 0.6. Fingerprints are exact, so they
+count the difference in the 16th digit. The two results really do differ.
+Whether two numbers are close enough is a comparison with a tolerance. That
+is a separate question from whether anything changed.
+
+## 6. useful-views' own data hash
+
+The `data_hash` above is a sketch. useful-views has the real one,
+`uvs.data_hash()`. It follows exact, versioned
+[rules](../reference/data-hash.md), and reads a large file a column at a
+time:
+
+```{python}
+import useful_views as uvs
+
+print(uvs.data_hash("readings.parquet"))
+print(uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true. The same hash
+# is pinned in tests/test_data_hash.py.
+assert uvs.data_hash("readings.parquet") == (
+    "datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18"
+)
+assert uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet")
+```
+
+Your first line should match this one character for character. The data
+hash depends only on the readings, so it is the same on every computer,
+whichever library wrote the file.
+
+## What each fingerprint notices
+
+| What happened | File hash | Data hash |
+|---|---|---|
+| saved by another library, or a newer version of one | usually changes | **same** |
+| saved again by the same library | same | same |
+| a value corrected | changes | changes |
+| the same rows in another order | changes | changes |
+| a number differs in its last digit | changes | changes |
+
+The file hash is the cheap, exact check on one computer. The data hash is
+the one a co-author, a reviewer or a CI job can compare, across computers
+and library versions. useful-views' [stale-view
+checks](../concepts/stale-views.md) are built on the data hash.

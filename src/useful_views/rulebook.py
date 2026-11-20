@@ -24,10 +24,18 @@ class Rule(NamedTuple):
 
 
 class _Rules(dict):
-    """The numbered rules a recipe must follow: RULES[7] is rule 7, a Rule.
+    """The numbered rules a recipe must follow.
 
-    `RecipeRefused.rule` is a key of this dict, `useful-views rules` prints the
-    rules, and `describe_rules()` gives them as text.
+    Command line: `useful-views rules`.
+
+    `RULES[7]` is rule 7, a `Rule`. `RecipeRefused.rule` is a key of this
+    dict. `useful_views.rulebook.describe_rules()` gives the rules as text.
+
+    Examples:
+        ```python
+        >>> uvs.RULES[7].title
+        'Outputs are allowed and unique'
+        ```
     """
 
 
@@ -88,7 +96,21 @@ RULES: dict[int, Rule] = _Rules(
         ),
     )
 )
-"""The numbered rules a recipe must follow: RULES[7] is rule 7, a Rule."""
+"""The numbered rules a recipe must follow.
+
+Command line: `useful-views rules`.
+
+`RULES[7]` is rule 7, a `Rule`. `RecipeRefused.rule` is a key of this
+dict. `useful_views.rulebook.describe_rules()` gives the rules as text.
+
+Examples:
+    ```python
+    >>> uvs.RULES[7].title
+    'Outputs are allowed and unique'
+    ```
+"""
+# The docstring great-docs shows. inspect.getdoc(RULES) gives _Rules's: keep
+# the two the same.
 
 
 def describe_rules() -> str:

@@ -2,40 +2,13 @@
 title: "Recipes"
 ---
 
-A **recipe** is a folder in `recipes/`: a `recipe.toml` and one or more
-[steps](steps.md). From the inputs it declares, it makes the views it
-declares, by running its steps in order. Every view is made by exactly one
-recipe, and records that recipe.
+A recipe is a folder in `recipes/` that makes one or more views. It holds a
+`recipe.toml` and one or more [steps](steps.md), and runs the steps in order.
 
-```text
-recipes/pwt_panel/
-├── recipe.toml                 # description, inputs, outputs, steps
-├── 01_reshape_long.py          # the steps, run in numeric order
-├── 02_keep_core_variables.py
-└── 03_pivot_to_panel.py
-```
-
-## Making one
-
-```sh
-useful-views new-recipe pwt_panel
-```
-
-This writes `recipes/pwt_panel/recipe.toml`, which lists one step, and that
-step's stub file, `01_first_step.py`. The recipe's description and the
-step's description in `recipe.toml` both say TODO, and the recipe is refused
-until you replace them. The stub file holds only a note; replace it with
-your code, renaming it if you like (and changing its `file =` to match).
-
-A recipe's name is its folder's name: lowercase letters, digits and
-underscores, such as `pwt_panel`. It may not be a name Windows reserves for
-devices (`con`, `aux`, `nul`, `prn`, `com1`, ...), or `__pycache__`, which
-useful-views ignores.
-
-## recipe.toml
+This is the example project's first recipe, `recipes/pwt_panel/recipe.toml`:
 
 ```toml
-description = "Country-year panel of core Penn World Table variables."
+description = "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States."
 inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
 outputs = ["useful-views/pwt-panel.parquet"]
 
@@ -56,109 +29,149 @@ file = "03_pivot_to_panel.py"
 description = "Spread the variables into columns, giving one row per country and year."
 ```
 
-- `description`: one sentence saying what the recipe produces. It is the
-  first thing the catalog and the cookbook say about the recipe's views.
-- `inputs`: at least one file the steps read: a file under `raw/`, or a view
-  another recipe makes.
-- `outputs`: at least one `.parquet` file directly inside `useful-views/`:
-  the views the steps write.
-- `steps`: a `[[steps]]` block for each step file in the folder, in the
-  order of their numbers, which is the order they run. Each has `file`, the
-  step file's name (just the name, not a path, so renaming the recipe's
-  folder changes nothing here), and `description`, one sentence saying what
-  the step does to the data (see [Steps](steps.md)).
+The folder holds that file and the three steps it lists:
+
+```text
+recipes/pwt_panel/
+├── recipe.toml
+├── 01_reshape_long.py
+├── 02_keep_core_variables.py
+└── 03_pivot_to_panel.py
+```
+
+## Make a recipe
+
+```sh
+useful-views new-recipe growth_since_2000
+```
+
+`new-recipe` writes `recipe.toml`, which lists one step, and that step's
+stub file, `01_first_step.py`. The recipe is refused until you replace the
+two TODO descriptions in `recipe.toml`. Replace the stub's note with your
+code. If you rename the file, change its `file =` to match.
+
+A recipe's name is its folder's name: lowercase letters, digits and
+underscores, such as `pwt_panel`. It can't be `__pycache__`, which
+useful-views ignores, or a name Windows keeps for devices (`con`, `aux`,
+`nul`, `prn`, `com1`, ...).
+
+## recipe.toml
+
+| Key | What it holds |
+|---|---|
+| `description` | One sentence saying what the recipe produces. The catalog and the cookbook say it first about each of its views. |
+| `inputs` | At least one file the steps read: a file under `raw/`, or a view another recipe makes. |
+| `outputs` | At least one `.parquet` file directly inside `useful-views/`: the views the steps write. |
+| `[[steps]]` | One block for each step file, in the order of their numbers, which is the order they run. |
+
+Each `[[steps]]` block has two keys:
+
+- `file`: the step file's name, with no path, so renaming the recipe's
+  folder changes nothing here;
+- `description`: one sentence saying what the step does to the data. See
+  [Steps](steps.md#the-description).
 
 Keep the `[[steps]]` blocks at the end of the file. TOML puts every line
-below a `[[steps]]` header into that step, so an `outputs = [...]` written
-below one is read as part of the step; useful-views notices and tells you to
-move it up.
-
-A description's spaces and line breaks are joined into one line, so a long
-one can be written over several lines in triple quotes, `"""..."""`, as
-above. A description with double quotes in it needs triple quotes too. A
-backslash starts an escape sequence: write it as `\\`, or put the text in
-triple single quotes, `'''...'''`, which keep backslashes as they are.
-Save `recipe.toml` as UTF-8 (a byte-order mark and Windows line endings are
-fine).
+below a `[[steps]]` header into that step. An `outputs = [...]` written below
+one is read as part of the step, and useful-views tells you to move it up.
 
 No path and no step file may be listed twice. Other keys, at the top or in a
-`[[steps]]` block, are ignored with a warning, so check the spelling.
+`[[steps]]` block, are ignored with a warning, so check the spelling. Save
+the file as UTF-8. A byte-order mark and Windows line endings are fine.
+
+## Quoting
+
+A description's spaces and line breaks are joined into one line.
+
+- Write a long description over several lines in triple quotes, `"""..."""`.
+- Put a description with double quotes in it in triple quotes too.
+- A backslash starts an escape sequence. Write it as `\\`, or put the text
+  in triple single quotes, `'''...'''`, which keep backslashes as they are.
 
 ## Inputs and outputs
 
-A raw input is a file you place in `raw/` by hand; it may sit in a subfolder
-and be in any format that is a single file. A view input is another recipe's
-output. Reading it makes that recipe **upstream** of this one: `sync` runs
-it first, and runs this one again whenever it runs the upstream one. `useful-views run` on the upstream recipe runs
-only that one: if its view changed, it warns and names this one, `check`
-reports this one as out of date, and `sync` runs it (see
-[Fingerprints](records.md#fingerprints)). Recipes may not form a cycle, and a recipe may not read
-its own view.
+A raw input is a file you place in `raw/` by hand. It may sit in a
+subfolder, and be in any format that is a single file.
 
-An output is a view that only this recipe makes. Views are parquet files, so
-the record can say exactly which columns and types each one has. In-between
-files, in any format, belong in `work/<recipe>/` instead; see
-[Steps](steps.md).
+A view input is a view another recipe has made. Reading it makes that recipe
+**upstream** of this one. `sync` runs the upstream recipe first, and runs
+this one again whenever it runs the upstream one.
+[Run, sync and check](running.qmd) says what `run` does then.
 
-Every raw input and every view also gets a resource name: a view's file
-name, or a raw file's path below `raw/`, without the extension and
-lowercased (`raw/wave1/survey.csv` is `wave1-survey`; see
-[Records](records.md)). No two files recorded anywhere in the project may
-share one ([rule 8](../reference/rules.md)). So a recipe cannot read
-`raw/gdp.csv` and write `useful-views/gdp.parquet` (call the view
-`gdp-panel.parquet`), and cannot read both `raw/survey.csv` and
+- A recipe needs at least one input. To use a database or a web API, save an
+  extract into `raw/` with a script outside `recipes/`. Note in the
+  project's `README.md` when and how, and read that file.
+- Recipes can't form a cycle, and a recipe can't read its own view.
+- An output is a view that only this recipe makes. In-between files, in any
+  format, go in `work/<recipe>/` instead.
+
+Every raw input and every view gets a [resource name](records.md): a view's
+file name, or a raw file's path below `raw/`, without the extension and
+lowercased. `raw/wave1/survey.csv` is `wave1-survey`. No two recorded files
+may share one ([rule 8](../reference/rules.md)). So a recipe can't read
+`raw/gdp.csv` and write `useful-views/gdp.parquet`. Call the view
+`gdp-panel.parquet` instead. Nor can a recipe read both `raw/survey.csv` and
 `raw/survey.dta`.
-
-A recipe needs at least one input. To use data from a database or a web API,
-save an extract into `raw/` first, with a script outside `recipes/`, note in
-the project's `README.md` when and how, and read that file.
 
 ## Paths
 
 Paths are relative to the project root, use forward slashes, and match the
-letter case on disk: `raw/data.csv`, not `./raw/data.csv`, `raw\data.csv` or
-an absolute path. A path in `recipe.toml` is the same string the steps use
-in their code, and the same string another recipe uses to read the view.
-When a path is written wrongly, the refusal gives the corrected string where
-it can.
+letter case on disk.
 
-Each path names one file. There are no wildcards, so list every file a
-recipe reads (`raw/2024-01.csv`, `raw/2024-02.csv`, ...). Formats made of a
-folder (a partitioned parquet dataset, a Zarr store) or of several files read
-together (a shapefile's `.shp`, `.dbf` and `.shx`, which share one resource
-name) are not supported yet.
+| Write | Not |
+|---|---|
+| `raw/data.csv` | `./raw/data.csv`, `raw\data.csv`, or an absolute path |
 
-Every folder and file name in a path must be one that can exist on Windows:
-no `<`, `>`, `:`, `"`, `|`, `?` or `*`, not ending in a dot or a space, and
-not a device name such as `con`, `aux` or `nul`, with or without an
-extension. Rename such files before listing them. Spaces inside a name are
-fine.
+- A path in `recipe.toml` is the same string the steps use in their code,
+  and the same string another recipe uses to read the view.
+- Each path names one file. There are no wildcards, so list every file a
+  recipe reads: `raw/2024-01.csv`, `raw/2024-02.csv`, and so on.
+- Every folder and file name must be one that can exist on Windows. It has
+  no `<`, `>`, `:`, `"`, `|`, `?` or `*`, doesn't end in a dot or a space,
+  and isn't a device name such as `con`, `aux` or `nul`, with or without an
+  extension. Rename such files before you list them. Spaces inside a name
+  are fine.
 
-## Changing a recipe
+A raw input can't yet be a folder (a partitioned parquet dataset, a Zarr
+store), or several files read together, such as a shapefile's `.shp`, `.dbf`
+and `.shx`, which share one resource name. See
+[#35](https://github.com/jameshorine/useful-views/issues/35).
 
-`sync` compares each recipe folder with its record from the last successful
-run. It notices a changed description, inputs or outputs in `recipe.toml`, a
-step added, removed or renamed, and a step's changed description in
-`recipe.toml`, and runs the recipe again, then every recipe downstream of
-it. An output you only remove is different: `sync` deletes that view and
-drops it from the record, without running the recipe again.
+## Rename or delete a recipe
 
-It does not notice edits inside a step's code, a helper module, or a raw
-file replaced under the same name. Nor does it notice a recipe change that
-arrives together with its record from a `git pull`, merge or branch switch:
-the record then already matches the folder, while the views, which are not
-in git, still come from the recipe as it was. After any of those, use
-`useful-views sync --all`.
+- **Rename**: rename the folder, and change `work/<old name>/` to
+  `work/<new name>/` in its steps. Then run `useful-views sync`. The `file`
+  names in its `recipe.toml` stay as they are.
+- **Delete**: delete the folder, then run `useful-views sync`. It removes the
+  recipe's record, its views and its work files.
+- **Remove an output**: take it out of `outputs`, then run
+  `useful-views sync`. It deletes that view and drops it from the record,
+  without running the recipe.
 
-To rename a recipe, rename its folder, change `work/<old name>/` to
-`work/<new name>/` in its steps, then run `useful-views sync`. The `file`
-names in its `recipe.toml` stay as they are. To delete one, delete its
-folder and run `useful-views sync`, which removes its record,
-its views and its work files. If another recipe reads one of those views,
-change that recipe's `inputs` first, or delete it too: otherwise its own
-views stay as they were, and only `check` reports the missing input. The
-same goes for removing an output that another recipe reads. See
-[run, sync and check](running.md).
+Before you delete a recipe or an output, change the `inputs` of every recipe
+that reads those views, or delete it too. Otherwise its views stay as they
+were, and only `check` reports the missing input.
 
-Rules 1 and 4 to 8 are about recipes; [Rules](../reference/rules.md) lists
-them all.
+After any other change to a recipe, run `useful-views sync`.
+[Run, sync and check](running.qmd) lists the changes `sync` notices, and the
+ones that need `sync --all`.
+
+## When a recipe is refused
+
+`run` and `sync` check each recipe against the
+[rules](../reference/rules.md) before they change anything on disk. A
+refusal names the file to fix and the rule it broke, and says how to fix it.
+`sync` checks every recipe first and lists every problem at once. The common
+ones:
+
+| Refused because | Fix |
+|---|---|
+| a description says TODO | Replace it with one sentence. |
+| an input doesn't exist | Check the path against the file, capital letters included. If it's another recipe's view, run that recipe first, or use `sync`. |
+| a path is in the wrong form | Write it from the project root, with forward slashes. The message gives the corrected string where it can. Inside double quotes a backslash is a TOML escape, so then the message only says to use forward slashes. |
+| the steps don't match the step files | Give each `NN_name.py` file its own `[[steps]]` block, in the order of their numbers. The message names each file that doesn't match. See [Steps](steps.md#names). |
+
+A step that fails isn't a refusal, because the run had started. See
+[When a step fails](steps.md#when-a-step-fails).
+
+`useful-views rules` lists every rule. Rules 1 and 4 to 8 are about recipes.
