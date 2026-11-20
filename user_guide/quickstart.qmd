@@ -281,7 +281,7 @@ says what to commit.
 
 - [Recipes](concepts/recipes.md) and [Steps](concepts/steps.md): write them
   well.
-- [Run, sync and check](concepts/running.md): what to run after a change.
+- [Run, sync and check](concepts/running.qmd): what to run after a change.
 - [From Python](guides/python.qmd): the same walkthrough in a notebook.
 - [Working with AI tools](guides/ai-tools.md): let an assistant write
   recipes.

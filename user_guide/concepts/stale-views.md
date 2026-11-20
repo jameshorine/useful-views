@@ -32,7 +32,7 @@ view only when a recipe is about to read it.
 
 ## An example: the PWT project
 
-The example project in [Get started](../quickstart.md) has two recipes.
+The example project in [Get started](../quickstart.qmd) has two recipes.
 `pwt_panel` turns the raw Penn World Table extract into a panel.
 `gdp_per_capita` reads that panel and divides GDP by population. In 2019,
 the panel gives the United States a population of 337.79 million and GDP of

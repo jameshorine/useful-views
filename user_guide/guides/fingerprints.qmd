@@ -66,7 +66,7 @@ planned ([#32](https://github.com/jameshorine/useful-views/issues/32)).
 [Stale views](../concepts/stale-views.md) explains what fingerprints are
 for.
 
-You need polars and pyarrow, which the [quickstart](../quickstart.md) setup
+You need polars and pyarrow, which the [quickstart](../quickstart.qmd) setup
 installs. Work in a new, empty folder. Run each block in order, in one
 Python session or notebook.
 

@@ -96,7 +96,7 @@ subfolder, and be in any format that is a single file.
 A view input is a view another recipe has made. Reading it makes that recipe
 **upstream** of this one. `sync` runs the upstream recipe first, and runs
 this one again whenever it runs the upstream one.
-[Run, sync and check](running.md) says what `run` does then.
+[Run, sync and check](running.qmd) says what `run` does then.
 
 - A recipe needs at least one input. To use a database or a web API, save an
   extract into `raw/` with a script outside `recipes/`. Note in the
@@ -153,7 +153,7 @@ that reads those views, or delete it too. Otherwise its views stay as they
 were, and only `check` reports the missing input.
 
 After any other change to a recipe, run `useful-views sync`.
-[Run, sync and check](running.md) lists the changes `sync` notices, and the
+[Run, sync and check](running.qmd) lists the changes `sync` notices, and the
 ones that need `sync --all`.
 
 ## When a recipe is refused

@@ -95,7 +95,7 @@ assert uvs.check(root=project) == []
 ```
 
 An empty list means `check` found no problems.
-[Run, sync and check](../concepts/running.md) says what each one does.
+[Run, sync and check](../concepts/running.qmd) says what each one does.
 
 ## Read a view
 
