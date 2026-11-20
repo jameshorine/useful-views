@@ -52,7 +52,7 @@ def sh(line, expect=0):
 ```
 
 The functions in `useful_views` do what the commands do, from a script or a
-notebook. This page runs the [Get started](../quickstart.md) walkthrough in
+notebook. This page runs the [Get started](../quickstart.qmd) walkthrough in
 Python, as you would in a notebook.
 
 The notebook must run in the environment useful-views is installed in. See

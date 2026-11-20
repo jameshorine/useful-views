@@ -115,4 +115,4 @@ useful-views --version
 If the `useful-views` command isn't found, `python -m useful_views --version`
 runs the same program with the Python you name.
 
-Next, [Get started](quickstart.md) walks through an example project.
+Next, [Get started](quickstart.qmd) walks through an example project.

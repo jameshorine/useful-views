@@ -76,7 +76,7 @@ Views are parquet files because parquet keeps each column's type. The record
 and the catalog can then say exactly what each view holds. Other view
 formats are [planned](https://github.com/jameshorine/useful-views/issues/34).
 
-[Get started](../quickstart.md) says who writes each file.
+[Get started](../quickstart.qmd) says who writes each file.
 
 ## What to commit
 
