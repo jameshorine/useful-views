@@ -1,0 +1,265 @@
+---
+title: "From Python"
+---
+
+```{python}
+#| include: false
+# Setup, hidden from readers. Every .qmd page starts with this same cell
+# (tests/test_docs_pages.py checks). It works in a fresh folder, reads the
+# example project from this repository's tests/data (offline), and defines
+# sh(), which runs a command shown on the page and prints its output.
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import warnings
+from pathlib import Path
+
+import useful_views
+
+_mirror = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data"
+if not (_mirror / "examples" / "pwt").is_dir():
+    raise RuntimeError(f"no example data at {_mirror}")
+os.environ["USEFUL_VIEWS_DATA_URL"] = str(_mirror)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+WORK = str(Path(tempfile.mkdtemp(prefix="useful-views-docs-")).resolve())
+os.chdir(WORK)
+warnings.formatwarning = lambda message, category, *args, **kwargs: f"{category.__name__}: {message}\n"
+
+
+def sh(line, expect=0):
+    """Run one command shown on the page (useful-views, cd or cat) and print
+    its output as a terminal would. Fails if it exits with another code."""
+    word, _, rest = line.partition(" ")
+    if word == "cd":
+        os.chdir(shlex.split(rest)[0])
+        return
+    if word == "cat":
+        print(Path(shlex.split(rest)[0]).read_text(encoding="utf-8"), end="")
+        return
+    if word != "useful-views":
+        raise ValueError(f"sh() runs useful-views, cd and cat, not {line!r}")
+    done = subprocess.run(
+        [sys.executable, "-m", "useful_views", *shlex.split(rest)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+    )
+    out = done.stdout.replace(WORK, "/path/to")
+    if out.strip():
+        print(out, end="")
+    if done.returncode != expect:
+        raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
+```
+
+The functions in `useful_views` do what the commands do, from a script or a
+notebook. This page runs the [Get started](../quickstart.md) walkthrough in
+Python, as you would in a notebook.
+
+The notebook must run in the environment useful-views is installed in. See
+[Installation](../installation.md#in-a-notebook).
+
+## Get the example
+
+```{python}
+import useful_views as uvs
+
+project = uvs.example("pwt")
+```
+
+`example` downloads the example's raw data and recipes, checks each file
+against its checksum, and sets up the folder as `init` would. It returns the
+project folder, here `pwt-example/`. A second argument names another folder.
+
+For your own data, `uvs.init("my-project")` makes the same
+[layout](../concepts/projects.md), empty.
+
+## Make the views
+
+```{python}
+result = uvs.sync(root=project)
+result.ran
+```
+
+`sync` ran both recipes, upstream first. Its progress lines go to standard
+error. A step's own output appears as the step runs.
+
+```{python}
+uvs.check(root=project)
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert result.ran == ("pwt_panel", "gdp_per_capita")
+assert uvs.check(root=project) == []
+```
+
+An empty list means `check` found no problems.
+[Run, sync and check](../concepts/running.md) says what each one does.
+
+## Read a view
+
+Views are parquet files, so any data library reads them:
+
+```{python}
+import polars as pl
+
+gdp = pl.read_parquet(project / "useful-views" / "gdp-per-capita.parquet")
+gdp.filter(pl.col("year") == 2023)
+```
+
+## Work in a notebook in the project
+
+Save your notebooks inside the project, for example in `notebooks/`. Jupyter
+starts a notebook in its own folder. useful-views walks up from there to the
+folder that holds `datapackage.json`, so you can leave out `root=`:
+
+```{python}
+import os
+
+os.makedirs(project / "notebooks", exist_ok=True)
+os.chdir(project / "notebooks")  # Jupyter does this for a notebook saved there
+
+uvs.check()
+```
+
+`uvs.root()` returns the project folder. Use it to build the path to a view:
+
+```{python}
+gdp = pl.read_parquet(uvs.root() / "useful-views" / "gdp-per-capita.parquet")
+gdp.shape
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert uvs.root() == project
+```
+
+From a folder outside the project, name the project with `root=`, as in
+`uvs.check(root="~/data/my-project")`. It is the folder that holds
+`datapackage.json`. `new_recipe`, `run`, `sync`, `check` and `cookbook` take
+`root=`. `init` and `example` take the folder to create instead. Outside a
+project, `uvs.root()` raises `ProjectNotFound`.
+
+On the command line, name it with `-C`, as in
+`useful-views -C ~/data/my-project check`. See
+[Command line](../reference/cli.md).
+
+## Write a recipe
+
+Add a recipe that reads the `gdp-per-capita` view and averages each
+country's growth since 2000. Start from the template:
+
+```{python}
+folder = uvs.new_recipe("growth_since_2000")
+```
+
+`new_recipe` returns the recipe folder. It holds `recipe.toml`, which lists
+one step, and that step's stub file, `01_first_step.py`. The descriptions
+still say TODO, so running the recipe is refused before anything changes:
+
+```{python}
+try:
+    uvs.run("growth_since_2000")
+except uvs.RecipeRefused as err:
+    print(err)
+    print("rule:", err.rule, "| file to fix:", err.path)
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+try:
+    uvs.run("growth_since_2000")
+except uvs.RecipeRefused as err:
+    assert err.rule == 1 and err.path == "recipes/growth_since_2000/recipe.toml"
+else:
+    raise AssertionError("the template recipe was not refused")
+```
+
+The message says what to fix, and where. `err.rule` is the number of the
+broken [rule](../reference/rules.md).
+
+Next you would edit the two files in your editor. Here Python writes them, so
+the page runs as it stands. The step file is renamed `01_average_growth.py`,
+and its `[[steps]]` block names that file. The paths in the step are the same
+strings as in `recipe.toml`.
+
+```{python}
+(folder / "recipe.toml").write_text('''\
+description = "Average annual growth of GDP per capita since 2000."
+inputs  = ["useful-views/gdp-per-capita.parquet"]
+outputs = ["useful-views/growth-since-2000.parquet"]
+
+[[steps]]
+file = "01_average_growth.py"
+description = "Average the growth of GDP per capita by country, from 2000 on."
+''')
+(folder / "01_average_growth.py").write_text('''\
+import polars as pl
+
+gdp = pl.read_parquet("useful-views/gdp-per-capita.parquet")
+growth = (
+    gdp.filter(pl.col("year") >= 2000)
+    .group_by("iso", "country")
+    .agg(pl.col("growth_pct").mean().round(2).alias("avg_growth_pct"))
+    .sort("iso")
+)
+growth.write_parquet("useful-views/growth-since-2000.parquet")
+''')
+(folder / "01_first_step.py").unlink()
+```
+
+`run` makes the one recipe you name:
+
+```{python}
+uvs.run("growth_since_2000")
+```
+
+```{python}
+pl.read_parquet(uvs.root() / "useful-views" / "growth-since-2000.parquet")
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+catalog = (uvs.root() / "useful-views" / "README.md").read_text(encoding="utf-8").splitlines()
+assert [line for line in catalog if line.startswith("## ") and line.endswith(".parquet")] == [
+    "## pwt-panel.parquet", "## gdp-per-capita.parquet", "## growth-since-2000.parquet"
+]
+assert uvs.check() == []
+```
+
+The catalog, `useful-views/README.md`, now lists three views.
+
+## What the functions return
+
+| Function | Returns |
+|---|---|
+| `init`, `example` | the project folder, as an absolute path |
+| `new_recipe` | the recipe folder |
+| `run` | a `RunResult`: `recipe`, `outputs`, `warnings` |
+| `sync` | a `SyncResult`: `removed`, `dropped`, `deleted`, `ran`, `reasons`, `warnings` |
+| `check` | a list of `Finding`s: `kind`, `path`, `message`, `rule`, `recipe`, `reason` |
+| `cookbook` | a `CookbookResult`: `path`, `written`, `up_to_date`, `recipes`, `findings` |
+| `root` | the project folder |
+
+## Errors and warnings
+
+Every error is a `UsefulViewsError`. Each one has `recipe`, `sync_result` and
+`to_dict()`, and the facts of its kind:
+
+| Error | When | Its facts |
+|---|---|---|
+| `RecipeRefused` | a recipe breaks a rule, so nothing changed | `rule`, `rule_title`, `path`, `refusals` |
+| `StepFailed` | a step failed | `step`, `returncode`, `stderr` |
+| `OutputError` | a declared view is missing, empty or unreadable | `paths`, `problems` |
+| `CookbookError` | the project isn't in sync, so the cookbook can't be written | `findings` |
+| `ExampleError` | an example can't be downloaded or set up | `kind` |
+| `DataHashError` | a file's [data hash](fingerprints.qmd) can't be computed | `path`, `column` |
+| `ProjectNotFound` | no project is found | |
+| `ProjectError` | the project is missing or damaged, or a file can't be written | |
+
+Warnings are `UsefulViewsWarning`s. A notebook shows them as they happen, and
+`RunResult` and `SyncResult` keep them in `warnings`.

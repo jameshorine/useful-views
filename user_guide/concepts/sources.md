@@ -2,20 +2,11 @@
 title: "Sources"
 ---
 
-`raw/` is not in git, so a project has to say where each raw file comes
-from. `sources.toml`, at the project root, says it in a form useful-views can
-read: for each data source, the raw files it covers, how to get it, its
-license, how to cite it, and whether its files are shared with the project.
-useful-views copies these details into `datapackage.json`, and the catalog
-and the cookbook show them.
+`raw/` isn't in git, so a project has to say where each raw file comes from.
+`sources.toml`, at the project root, says it in a form useful-views can
+read. A project doesn't need one.
 
-A project does not need a `sources.toml`. Once it has one, useful-views
-also notes each raw file that no source covers.
-
-## sources.toml
-
-You write it, one `[[sources]]` block per source. One source can cover
-several raw files.
+This is the example project's `sources.toml`, with its `access` shortened:
 
 ```toml
 [[sources]]
@@ -37,6 +28,12 @@ Generation of the Penn World Table." American Economic Review, 105(10),
 shared = true
 ```
 
+You write one `[[sources]]` block for each source. One source can cover
+several raw files. useful-views copies the details into `datapackage.json`,
+and the catalog and the cookbook show them.
+
+## Keys
+
 | Key | | What it holds |
 |---|---|---|
 | `title` | required | What the data is, as its publisher names it. |
@@ -45,32 +42,46 @@ shared = true
 | `doi` | | Its DOI, such as `10.34894/FABVLR`. |
 | `access` | | How to get it: the steps, any registration or application, and any limits on access. |
 | `cost` | | What it costs to get. |
-| `time` | | How long it takes to get (an application can take months). |
+| `time` | | How long it takes to get. An application can take months. |
 | `obtained` | | When you got it, as a date: `obtained = 2026-10-09`. |
 | `license` | | Its license: an identifier such as `CC-BY-4.0` or `ODC-BY-1.0`, or its name. |
 | `license_url` | | Where its license is. |
 | `citation` | | How to cite it. |
-| `shared` | | `true` if its files are shared with the project (in its replication package), `false` if not. |
+| `shared` | | `true` if its files are shared with the project, in its replication package. `false` if not. |
 | `reason` | | Why not, when `shared = false`: confidential, licensed, too large, ... |
 
-Every key but `title` and `files` is optional, but the more a source says,
-the easier it is to find again. Spaces and line breaks in a value are joined
-into one line, so a long one can be written over several lines in triple
-quotes, `"""..."""`. Text with double quotes in it needs triple quotes too. A
-backslash starts an escape sequence: write it as `\\`, or put the text in
-triple single quotes, `'''...'''`, which keep it as written. Other keys, at
-the top or in a `[[sources]]` block, are ignored with a warning, so check the
-spelling. Save the file as UTF-8, and commit it.
+Every key but `title` and `files` is optional. The more a source says, the
+easier it is to find again. Long values and quotes work as in `recipe.toml`
+(see [Quoting](recipes.md#quoting)). Other keys are ignored with a warning,
+so check the spelling. Save the file as UTF-8, and commit it.
+
+## Update sources
+
+Edit `sources.toml`, then sync. No recipe runs, because the data hasn't
+changed.
+
+```sh
+useful-views check   # reports stale-sources
+useful-views sync    # writes the new details
+```
+
+`cookbook --check` reports the same change without the data, so CI catches a
+`sources.toml` committed without a sync. See [Cookbook](cookbook.md).
+
+Delete `sources.toml`, and the next sync removes the details.
 
 ## Where the details go
 
 In `datapackage.json`, each raw file a recipe read gets its source's details,
-in the Data Package's own fields: `sources` (its `title`, and its `url` as
-`path`, or a link from its DOI), with the other details beside them, and
-`licenses`. A license that is an identifier is written as its `name`, any
-other as its `title`, with `license_url` as its `path`. A license that is
-neither an identifier nor has a URL stays in the source, as `license`, since
-the Data Package standard requires one or the other.
+in the Data Package's own fields:
+
+- `sources`: the `title`, and the `url` as `path` (or a link made from the
+  DOI), with the other details beside them;
+- `licenses`: a license that is an identifier as `name`, any other as
+  `title`, with `license_url` as `path`.
+
+A license with neither an identifier nor a URL stays in the source, as
+`license`, since the Data Package standard requires one or the other.
 
 ```json
 {
@@ -96,38 +107,36 @@ sources, and names any raw file that has none. The cookbook lists the
 sources, each with its files. A project without a `sources.toml` gets
 neither.
 
-## Keeping them in step
-
-The details are metadata: they say where the data came from, not what it
-holds. So changing `sources.toml` never makes a recipe out of date. Until
-the next sync, `check` reports `stale-sources`, and `useful-views sync`
-writes the new details into `datapackage.json` and the catalog without
-running any recipe. `cookbook --check` reports it too, with no data needed,
-so a CI job catches a `sources.toml` committed without a sync. Delete
-`sources.toml`, and the next sync removes the details.
-
 ## Raw files with no source
 
 Once a project has a `sources.toml`, `check` and `sync` note each raw file
-that a recipe reads and no source lists, and `run` notes the recipe's own.
-It is a note, not a finding: `check` still succeeds. A project with no
-`sources.toml` gets no note.
+that a recipe reads and no source lists. `run` notes the recipe's own. These
+are notes, which don't make `check` fail. A project with no `sources.toml`
+gets no note.
 
-## When sources.toml cannot be read
+## When sources.toml can't be read
 
-If it is not valid TOML, or a block lacks its `title` or `files`, lists a
-path outside `raw/`, or gives a raw file to two sources, `check` reports
-`unreadable-sources`, listing every problem. `run` and `sync` still run,
-and warn: the details already in `datapackage.json` are kept as they were
-recorded until you fix the file.
+`check` reports `unreadable-sources`, and lists every problem, when:
+
+- the file isn't valid TOML;
+- a block lacks its `title` or `files`;
+- a block lists a path outside `raw/`;
+- two sources list the same raw file.
+
+`run` and `sync` still run, and warn. The details already in
+`datapackage.json` stay as they were recorded until you fix the file.
 
 ## Sources and DCAS
 
 Journals that follow the [Data and Code Availability
 Standard](https://datacodestandard.org/) (DCAS) ask a replication package to
-say how to get each data source, at what cost and in what time (rule 1),
-whether its raw data is shared (rules 2 and 16), how to cite it (rule 6) and
-under what license (rule 15). `sources.toml` records these for the raw data
-of a useful-views project. Generating the README sections a data editor
-looks for is planned; see [issue
-#22](https://github.com/jameshorine/useful-views/issues/22).
+say, for each data source:
+
+- how to get it, at what cost and in what time (rule 1);
+- whether its raw data is shared (rules 2 and 16);
+- how to cite it (rule 6);
+- under what license (rule 15).
+
+`sources.toml` records these for the raw data of a useful-views project.
+Writing the README sections a data editor looks for is
+[issue #22](https://github.com/jameshorine/useful-views/issues/22).
