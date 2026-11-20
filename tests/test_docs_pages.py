@@ -54,18 +54,25 @@ def test_page_uses_plain_python(name):
     assert not magic, f"{name} uses IPython-only lines: {magic}"
 
 
-@pytest.mark.parametrize("name", PAGES)
-def test_page_runs(name, tmp_path, monkeypatch):
+def run_cells(found: list[str], name: str, tmp_path: Path, monkeypatch) -> dict:
+    """Run cells in order in one namespace, as Quarto does, with the setup
+    cell's fresh folder being tmp_path. Returns the namespace."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(tempfile, "mkdtemp", lambda *args, **kwargs: str(tmp_path))
     monkeypatch.setattr(warnings, "formatwarning", warnings.formatwarning)  # the setup cell replaces it
     environ = dict(os.environ)
     namespace: dict = {"__name__": "__main__"}
     try:
-        found = cells(GUIDE / name)
-        assert found, f"{name} has no {{python}} cells; it could be a .md page"
         for i, code in enumerate(found, start=1):
             exec(compile(code, f"{name}, cell {i}", "exec"), namespace)
     finally:
         os.environ.clear()
         os.environ.update(environ)
+    return namespace
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_page_runs(name, tmp_path, monkeypatch):
+    found = cells(GUIDE / name)
+    assert found, f"{name} has no {{python}} cells; it could be a .md page"
+    run_cells(found, name, tmp_path, monkeypatch)
