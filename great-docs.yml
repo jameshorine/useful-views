@@ -44,7 +44,7 @@ site_url: https://jameshorine.github.io/useful-views/
 user_guide:
   - section: Get started
     contents:
-      - quickstart.md
+      - quickstart.qmd
       - installation.md
   - section: Projects and recipes
     contents:
@@ -64,6 +64,7 @@ user_guide:
   - section: Working with others
     contents:
       - guides/ai-tools.md
+      - guides/compare.md
   - section: Reference
     contents:
       - reference/cli.md

@@ -1,0 +1,287 @@
+---
+title: "Get started"
+---
+
+```{python}
+#| include: false
+# Setup, hidden from readers. Every .qmd page starts with this same cell
+# (tests/test_docs_pages.py checks). It works in a fresh folder, reads the
+# example project from this repository's tests/data (offline), and defines
+# sh(), which runs a command shown on the page and prints its output.
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import warnings
+from pathlib import Path
+
+import useful_views
+
+_mirror = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data"
+if not (_mirror / "examples" / "pwt").is_dir():
+    raise RuntimeError(f"no example data at {_mirror}")
+os.environ["USEFUL_VIEWS_DATA_URL"] = str(_mirror)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+WORK = str(Path(tempfile.mkdtemp(prefix="useful-views-docs-")).resolve())
+os.chdir(WORK)
+warnings.formatwarning = lambda message, category, *args, **kwargs: f"{category.__name__}: {message}\n"
+
+
+def sh(line, expect=0):
+    """Run one command shown on the page (useful-views, cd or cat) and print
+    its output as a terminal would. Fails if it exits with another code."""
+    word, _, rest = line.partition(" ")
+    if word == "cd":
+        os.chdir(shlex.split(rest)[0])
+        return
+    if word == "cat":
+        print(Path(shlex.split(rest)[0]).read_text(encoding="utf-8"), end="")
+        return
+    if word != "useful-views":
+        raise ValueError(f"sh() runs useful-views, cd and cat, not {line!r}")
+    done = subprocess.run(
+        [sys.executable, "-m", "useful_views", *shlex.split(rest)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+    )
+    out = done.stdout.replace(WORK, "/path/to")
+    if out.strip():
+        print(out, end="")
+    if done.returncode != expect:
+        raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
+```
+
+This page takes you through a small project from start to finish. You get
+an example, make its views, look at one, and write a recipe of your own.
+Everything runs in a terminal. [From Python](guides/python.qmd) does the
+same in a notebook.
+
+You need useful-views and polars in one Python environment.
+[Installation](installation.md) shows how.
+
+## Get the example
+
+```sh
+useful-views example pwt
+cd pwt-example
+```
+
+```{python}
+#| echo: false
+sh("useful-views example pwt")
+sh("cd pwt-example")
+```
+
+The example holds real data: an extract of the Penn World Table 11.0 for
+Brazil, Germany, Spain and the United States. Its `README.md` gives the
+source and how to cite it. The project looks like this:
+
+```text
+pwt-example/
+├── README.md          what the project is, and the data credit
+├── AGENTS.md          instructions for AI coding assistants
+├── sources.toml       where each raw file comes from
+├── datapackage.json   the record of what each recipe made
+├── raw/               the files you start from
+│   └── pwt110_bra_deu_esp_usa.csv
+├── recipes/
+│   ├── pwt_panel/     recipe.toml and three steps
+│   └── gdp_per_capita/
+├── work/              in-between files, one folder per recipe
+└── useful-views/      the views, and README.md, their catalog
+```
+
+```{python}
+#| include: false
+# The tree above is what example made.
+assert {"README.md", "AGENTS.md", "sources.toml", "datapackage.json", "raw", "recipes", "work", "useful-views"} <= set(os.listdir())
+assert sorted(os.listdir("recipes")) == ["gdp_per_capita", "pwt_panel"]
+assert len(os.listdir("recipes/pwt_panel")) == 4  # recipe.toml and three steps
+```
+
+## The words
+
+useful-views is meant to be easy! It uses a few (hopefully) useful words:
+
+| Word | What it is | Where it lives |
+|---|---|---|
+| **Raw input** | A file you start from. No recipe makes it. | `raw/` |
+| **Step** | A Python script that makes at least one real change to the data. | a numbered file in a recipe folder |
+| **Recipe** | Steps that run in order. From the inputs it lists, it makes the views it lists. | a folder in `recipes/` |
+| **View** | A table a recipe makes: a useful view. | `useful-views/` |
+| **Work** | In-between files that only the later steps of the same recipe read. | `work/<recipe>/` |
+
+## Make the views
+
+```sh
+useful-views sync
+```
+
+```{python}
+#| echo: false
+sh("useful-views sync")
+```
+
+`sync` ran both recipes, upstream first: `gdp_per_capita` reads the view
+that `pwt_panel` makes. It recorded what each recipe read and made in
+`datapackage.json`, and listed the views in the catalog,
+`useful-views/README.md`.
+
+```sh
+useful-views check
+```
+
+```{python}
+#| echo: false
+sh("useful-views check")
+```
+
+`check` reports anything missing, refused or out of date. It changes
+nothing.
+
+## Look at a view
+
+Views are parquet files, so any library can read them:
+
+```{python}
+import polars as pl
+
+gdp = pl.read_parquet("useful-views/gdp-per-capita.parquet")
+gdp.filter(pl.col("year") == 2023)
+```
+
+## Write a recipe
+
+Add a recipe that averages each country's growth since 2000. Start from the
+template:
+
+```sh
+useful-views new-recipe growth_since_2000
+```
+
+```{python}
+#| echo: false
+sh("useful-views new-recipe growth_since_2000")
+```
+
+Run it before you fill it in:
+
+```sh
+useful-views run growth_since_2000
+```
+
+```{python}
+#| echo: false
+sh("useful-views run growth_since_2000", expect=3)
+```
+
+The template still says TODO, so `run` refuses before anything changes. The
+message names the file to fix, each problem, and the rule.
+
+Fix it in your editor. Rename `01_first_step.py` to `01_average_growth.py`,
+then make the two files say this:
+
+```{python}
+#| include: false
+# What the reader writes in their editor.
+recipe = Path("recipes/growth_since_2000")
+(recipe / "recipe.toml").write_text(
+    'description = "Average annual growth of GDP per capita since 2000."\n'
+    'inputs  = ["useful-views/gdp-per-capita.parquet"]\n'
+    'outputs = ["useful-views/growth-since-2000.parquet"]\n'
+    "\n"
+    "[[steps]]\n"
+    'file = "01_average_growth.py"\n'
+    'description = "Average the growth of GDP per capita by country, from 2000 on."\n',
+    encoding="utf-8",
+)
+(recipe / "01_first_step.py").unlink()
+(recipe / "01_average_growth.py").write_text(
+    "import polars as pl\n"
+    "\n"
+    'gdp = pl.read_parquet("useful-views/gdp-per-capita.parquet")\n'
+    "growth = (\n"
+    '    gdp.filter(pl.col("year") >= 2000)\n'
+    '    .group_by("iso", "country")\n'
+    '    .agg(pl.col("growth_pct").mean().round(2).alias("avg_growth_pct"))\n'
+    '    .sort("iso")\n'
+    ")\n"
+    'growth.write_parquet("useful-views/growth-since-2000.parquet")\n',
+    encoding="utf-8",
+)
+```
+
+```sh
+cat recipes/growth_since_2000/recipe.toml
+```
+
+```{python}
+#| echo: false
+sh("cat recipes/growth_since_2000/recipe.toml")
+```
+
+```sh
+cat recipes/growth_since_2000/01_average_growth.py
+```
+
+```{python}
+#| echo: false
+sh("cat recipes/growth_since_2000/01_average_growth.py")
+```
+
+`recipe.toml` says what the recipe makes and from what, and lists its steps
+in order. The step is an ordinary script: it reads the input and writes the
+output that `recipe.toml` names. [Recipes](concepts/recipes.md) and
+[Steps](concepts/steps.md) cover both.
+
+```sh
+useful-views run growth_since_2000
+useful-views check
+```
+
+```{python}
+#| echo: false
+sh("useful-views run growth_since_2000")
+sh("useful-views check")
+```
+
+```{python}
+#| include: false
+growth = pl.read_parquet("useful-views/growth-since-2000.parquet")
+assert growth.columns == ["iso", "country", "avg_growth_pct"] and growth.height == 4
+```
+
+The catalog now lists three views.
+
+Steps are code: `run` and `sync` run the Python in `recipes/`. Read the
+recipes of a project you didn't write before you run them; see
+[Steps](concepts/steps.md).
+
+## Who writes what
+
+| You write | useful-views writes |
+|---|---|
+| `README.md`, `sources.toml`, and everything in `recipes/` | `datapackage.json`, `useful-views/README.md` and `cookbook.json` |
+
+`init` and `new-recipe` start your files from templates, then leave them to
+you. `init` also writes `.gitignore` and `AGENTS.md` once; after that they
+are yours too. Don't edit the files useful-views writes.
+
+## Start your own project
+
+```sh
+useful-views init my-project
+```
+
+`init` makes the same folders, empty. Put your raw files in `raw/`, then
+add recipes with `useful-views new-recipe`. [Projects](concepts/projects.md)
+says what to commit.
+
+## Next
+
+- [Recipes](concepts/recipes.md) and [Steps](concepts/steps.md): write them
+  well.
+- [Run, sync and check](concepts/running.md): what to run after a change.
+- [From Python](guides/python.qmd): the same walkthrough in a notebook.
+- [Working with AI tools](guides/ai-tools.md): let an assistant write
+  recipes.
