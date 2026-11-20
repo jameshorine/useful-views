@@ -37,10 +37,27 @@ def _examples() -> list[doctest.DocTest]:
 
 
 EXAMPLES = _examples()
+FUNCTIONS = [name for name in uvs.__all__ if inspect.isfunction(getattr(uvs, name))]
 
 
 def test_some_docstrings_have_examples():
     assert EXAMPLES, "no public docstring has an Examples section"
+
+
+def test_every_public_function_has_an_example():
+    with_examples = {test.name for test in EXAMPLES}
+    missing = [name for name in FUNCTIONS if f"useful_views.{name}" not in with_examples]
+    assert FUNCTIONS and not missing, "no example in the docstring of: " + ", ".join(missing)
+
+
+@pytest.mark.parametrize("name", uvs.__all__)
+def test_summary_is_one_short_line(name):
+    """The reference index shows only a docstring's first line, so the summary
+    must not run on to line 2. docs/STYLE.md keeps it to 10 words."""
+    lines = (inspect.getdoc(getattr(uvs, name)) or "").splitlines()
+    assert lines, f"useful_views.{name} has no docstring"
+    assert len(lines) == 1 or not lines[1].strip(), f"useful_views.{name}: line 2 of the docstring is not blank"
+    assert len(lines[0].split()) <= 10, f"useful_views.{name}: the summary has more than 10 words"
 
 
 @pytest.mark.parametrize("test", EXAMPLES, ids=lambda test: test.name)

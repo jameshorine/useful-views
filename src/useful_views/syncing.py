@@ -38,17 +38,33 @@ class SyncResult:
     """What `sync` did.
 
     Attributes:
-        removed: Recipes whose records were removed because their folder is gone.
-        dropped: Views removed from a record because the recipe no longer declares them.
-        deleted: Files deleted: views no longer declared, and the work/
-            folders of the removed recipes (ending in "/").
+        removed: Recipes whose records were removed, because their folder is gone.
+        dropped: Views removed from a record, because the recipe no longer declares them.
+        deleted: Files deleted: views no longer declared, and the `work/`
+            folders of removed recipes (ending in "/").
         ran: Recipes run, in the order they ran.
-        warnings: Warnings issued along the way (also shown as they happen).
-        reasons: Why each recipe in `ran` ran: "never-run", "changed" (its
-            recipe.toml or steps no longer matched its record),
-            "outputs-changed", "views-missing", "input-data-changed" (a view
-            it reads had been made again with different data since it ran),
-            "upstream" (a view it reads was made again) or "all" (`all=True`).
+        warnings: Warnings issued along the way, also shown as they happened.
+        reasons: Why each recipe in `ran` ran.
+
+            - "never-run": it had never run;
+            - "changed": its recipe.toml or steps no longer matched its record;
+            - "outputs-changed": it no longer declared any view it made;
+            - "views-missing": a view it makes was missing;
+            - "input-data-changed": a view it reads had been made again with
+              different data since it ran;
+            - "upstream": a view it reads was made again;
+            - "all": `all=True`.
+
+    Examples:
+        ```python
+        >>> import shutil
+        >>> shutil.rmtree("recipes/gdp_per_capita")
+        >>> result = uvs.sync()
+        >>> result.removed
+        ('gdp_per_capita',)
+        >>> result.deleted
+        ('useful-views/gdp-per-capita.parquet', 'work/gdp_per_capita/')
+        ```
     """
 
     removed: tuple[str, ...]
@@ -509,48 +525,64 @@ def _stopped(plan: Plan, failed: str, ran: list[str], rerun_all: bool, interrupt
 
 
 def sync(*, root: str | Path | None = None, all: bool = False) -> SyncResult:
-    """Make the views and datapackage.json match the recipe folders, like `uv sync`.
+    """Make the views match the recipe folders, like `uv sync`.
 
-    First, every recipe folder is checked against the rules; if any recipe
-    would be refused, sync raises before changing anything, listing every
-    problem. Then it removes the records and view files of recipes whose
-    folder is gone and of outputs a recipe no longer declares, and runs,
-    upstream first, every recipe that has never run, whose recipe folder no
-    longer matches its record, whose views are missing, or that read a view
-    since made again with different data (`input-data-changed`), then the
-    recipes downstream of those: a data hash that comes out the same does not
-    show that a recipe reading the view would give the same results (a step
-    can see what the hash leaves out, such as a time zone), so they run too.
-    Progress lines go to standard error; steps' own output appears as they run.
+    Command line: `useful-views sync [--all]`.
 
-    Before any recipe runs, the views of each recipe that runs after another
-    one it reads from are removed: they are made again from new views. So if
-    sync stops, however it stops (a failure, an interrupt, the process
-    killed), those views are missing, and the next sync makes them. What it
-    had already done is kept.
+    In order, `sync`:
+
+    1. checks every recipe against the rules, and if any would be refused,
+       raises before changing anything, listing every problem;
+    2. removes the records and view files of recipes whose folder is gone,
+       and of outputs a recipe no longer declares;
+    3. removes the views of each recipe that will run after one it reads
+       from;
+    4. runs, upstream first, each recipe that:
+       - has never run;
+       - no longer matches its record;
+       - is missing a view;
+       - read a view since made again with different data
+         (`input-data-changed`);
+    5. runs the recipes downstream of those too, even if the data hash of
+       what they read is unchanged. A step can see what the hash leaves out,
+       such as a time zone.
+
+    However `sync` stops (a failure, an interrupt, the process killed), what
+    it had done is kept. The views removed in step 3 are missing, and the
+    next sync makes them. Progress lines go to standard error. Steps' own
+    output appears as they run.
 
     Args:
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
-        all: Run every recipe, not only those that are missing or changed.
-            Use it after editing the code inside a step, which sync does not
-            notice by itself, and after pulling or switching branches.
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
+        all: Run every recipe. Use it after editing the code inside a step,
+            which `sync` does not notice, and after a pull or a branch switch.
 
     Returns:
         A `SyncResult` saying what was removed, deleted and run.
 
     Raises:
-        RecipeRefused: A recipe breaks a rule; nothing changed. Its
+        RecipeRefused: A recipe breaks a rule. Nothing changed. Its
             `refusals` lists every problem found.
-        StepFailed, OutputError: A recipe failed while running. The removals
-            and the recipes that ran before it are kept; the exception's
-            `sync_result` says what was done, and its message what to run next.
-        ProjectError: Another useful-views command is changing the project;
-            a file could not be written or deleted; or a recipe that would run
-            reads a view whose file holds other data than datapackage.json
-            records (left by a git pull or a branch switch), in which case
-            nothing changed and the message says what to run.
+        StepFailed, OutputError: A recipe failed. The removals, and the
+            recipes that ran before it, are kept. The error's `sync_result`
+            says what was done, and its message what to run next.
+        ProjectError: Another useful-views command is changing the project,
+            or a file could not be written or deleted. Or a recipe that would
+            run reads a view whose file holds other data than
+            `datapackage.json` records, as after a git pull or a branch
+            switch. Then nothing changed, and the message says what to run.
         ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> uvs.sync()
+        SyncResult(removed=(), dropped=(), deleted=(), ran=(), warnings=(), reasons={})
+        >>> import os
+        >>> os.remove("useful-views/gdp-per-capita.parquet")
+        >>> uvs.sync().reasons
+        {'gdp_per_capita': 'views-missing'}
+        ```
     """
     project = find_root(root)
     with project_lock(project):
