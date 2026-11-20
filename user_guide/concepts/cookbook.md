@@ -133,7 +133,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install useful-views==0.2.0   # the version your project uses
+      - run: pip install useful-views==0.3.0   # the version your project uses
       - run: useful-views cookbook --check
 ```
 

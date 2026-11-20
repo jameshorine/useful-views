@@ -4,7 +4,7 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
-## Unreleased
+## 0.3.0 (2026-11-20)
 
 ### Breaking changes
 
