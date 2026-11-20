@@ -63,6 +63,7 @@ user_guide:
       - concepts/cookbook.md
   - section: Working with others
     contents:
+      - guides/python.qmd
       - guides/ai-tools.md
   - section: Reference
     contents:
