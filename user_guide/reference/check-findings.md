@@ -9,12 +9,14 @@ title: "Check findings"
 | Kind | Meaning |
 |---|---|
 | `unreadable-recipe` | A recipe folder whose recipe.toml is missing or cannot be read. |
+| `unreadable-sources` | sources.toml cannot be read, or does not have the shape it needs. Until it is fixed, the source details in datapackage.json are kept as they were recorded. |
 | `refused` | A recipe breaks a rule, so run and sync would refuse it. The finding names the rule. |
 | `missing-input` | An input a recipe.toml declares is not on disk. |
 | `never-run` | A recipe that has never run successfully. |
 | `out-of-date` | A recipe whose record no longer matches: its recipe.toml or steps changed since it last ran, its outputs changed, a view it reads was made again with different data since it ran, or a view it reads will be made again. sync runs it, except that a view dropped from its outputs only has its record removed. |
 | `missing-recipe-folder` | datapackage.json records a recipe whose folder is gone. sync removes the record. |
 | `missing-view` | A recorded view whose file is missing. |
+| `stale-sources` | The source details in datapackage.json do not match sources.toml (it was edited since the last sync). useful-views sync writes them again, without running any recipe. |
 | `stale-cookbook` | cookbook.json does not match the recorded recipes. Update it with useful-views cookbook. |
 | `stale-catalog` | useful-views/README.md does not match datapackage.json (edited by hand, or left from a merge). useful-views sync writes it again. |
 | `stray-file` | A file or folder in useful-views/, other than README.md, that no recipe makes. |

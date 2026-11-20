@@ -623,7 +623,44 @@ def render_catalog(data: dict) -> str:
             blocks.append("| Column | Type |\n|---|---|\n" + rows)
         else:
             blocks.append("No columns detected.")
+    blocks.extend(_source_blocks(data))
     return "\n\n".join(blocks) + "\n"
+
+
+def _source_blocks(data: dict) -> list[str]:
+    """The catalog's section on raw data sources (from sources.toml), when any are recorded."""
+    from .sources import grouped
+
+    sources = grouped(data)
+    if not sources:
+        return []
+    blocks = ["## Raw data sources"]
+    for source in sources:
+        lines = [f"- Files: {', '.join(f'`{p}`' for p in source['files'])}"]
+        if "path" in source:
+            lines.append(f"- Where: {source['path']}")
+        for key, label in (("doi", "DOI"), ("obtained", "Obtained"), ("access", "Access"), ("cost", "Cost"),
+                           ("time", "Time to obtain")):
+            if key in source:
+                lines.append(f"- {label}: {source[key]}")
+        license = (source.get("licenses") or [{}])[0]
+        named = license.get("name") or license.get("title") or source.get("license")
+        if named or license.get("path"):
+            lines.append(f"- License: {' '.join(x for x in (named, license.get('path')) if x)}")
+        if source.get("shared") is True:
+            lines.append("- Shared in the replication package: yes")
+        elif source.get("shared") is False:
+            reason = f": {source['reason']}" if "reason" in source else ""
+            lines.append(f"- Shared in the replication package: no{reason}")
+        if "citation" in source:
+            lines.append(f"- Cite: {source['citation']}")
+        blocks.append(f"### {source['title']}")
+        blocks.append("\n".join(lines))
+    covered = {p for s in sources for p in s["files"]}
+    missing = [r["path"] for r in data["resources"] if "producedBy" not in r and r["path"] not in covered]
+    if missing:
+        blocks.append("Raw files with no recorded source: " + ", ".join(f"`{p}`" for p in missing))
+    return blocks
 
 
 # --- writing ----------------------------------------------------------------

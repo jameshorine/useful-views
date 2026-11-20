@@ -48,3 +48,17 @@ Steps:
 | gdp_per_capita | integer |
 | growth_pct | number |
 | relative_to_usa | number |
+
+## Raw data sources
+
+### Penn World Table 11.0 (extract for Brazil, Germany, Spain and the United States)
+
+- Files: `raw/pwt110_bra_deu_esp_usa.csv`
+- Where: https://www.rug.nl/ggdc/productivity/pwt/
+- DOI: 10.34894/FABVLR
+- Obtained: 2026-10-09
+- Access: All variables and all years (1950 to 2023) for the four countries, exported from the PWT online data access tool and unchanged apart from its name: https://pwt-data-tool.streamlit.app/?page=Thematic+select&countries=USA%2CDEU%2CESP%2CBRA&variables=All&years=All
+- Cost: Free
+- License: CC-BY-4.0 https://creativecommons.org/licenses/by/4.0/
+- Shared in the replication package: yes
+- Cite: Feenstra, Robert C., Robert Inklaar and Marcel P. Timmer (2015), "The Next Generation of the Penn World Table." American Economic Review, 105(10), 3150-3182. https://doi.org/10.1257/aer.20130954

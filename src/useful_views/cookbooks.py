@@ -17,6 +17,7 @@ from .paths import RAW
 from .project import find_root
 from .lock import project_lock
 from .record import load_datapackage, run_order, write_atomic
+from .sources import grouped
 
 COOKBOOK = "cookbook.json"
 FORMAT_VERSION = 1
@@ -27,7 +28,8 @@ NOT_BLOCKING = {"stray-file", "stale-cookbook", "stale-catalog"}
 # With check=True, only findings that mean datapackage.json no longer matches
 # the recipe folders count; they need no data on disk, so a CI job with only
 # the git checkout (no raw/, no views) gets a real answer.
-RECORD_KINDS = {"unreadable-recipe", "refused", "never-run", "missing-recipe-folder"}
+RECORD_KINDS = {"unreadable-recipe", "refused", "never-run", "missing-recipe-folder", "unreadable-sources",
+                "stale-sources"}
 # "input-data-changed" too: datapackage.json disagrees with itself (a view's
 # recorded input fingerprint no longer matches that input's own).
 RECORD_REASONS = {"changed", "outputs-changed", "outputs-dropped", "input-data-changed"}
@@ -90,13 +92,17 @@ def build(data: dict) -> dict:
     records = {r["name"]: r for r in data["recipes"]}
     order = run_order(records)
     raw = sorted({p for r in records.values() for p in r["inputs"] if p.startswith(f"{RAW}/")})
-    return {
+    book = {
         "version": FORMAT_VERSION,
         "generator": "useful-views",
         "project": data.get("name"),
         "raw_inputs": raw,
-        "recipes": [records[name] for name in order],
     }
+    sources = grouped(data)
+    if sources:  # only when the project describes its sources (sources.toml)
+        book["sources"] = sources
+    book["recipes"] = [records[name] for name in order]
+    return book
 
 
 def render(book: dict) -> str:

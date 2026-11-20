@@ -29,6 +29,7 @@ only `cookbook.json`; none of them runs a step.
 
 ```
 README.md              # written by humans
+sources.toml           # written by humans, optional: where each raw file comes from
 datapackage.json       # generated record: never edit
 cookbook.json          # generated ledger of recipes: never edit
 raw/                   # inputs, placed by hand, not in git; steps never write here
@@ -84,6 +85,7 @@ project root, reads and writes files by the same path strings as in
 | Build everything missing or changed, upstream first | `useful-views sync` |
 | After editing the code of a step in recipe X | `useful-views run X`, then what its warnings say to run (or `useful-views sync --all`) |
 | Rebuild everything (after a pull, a branch switch, or a raw file replaced under the same name) | `useful-views sync --all` |
+| Describe where a raw file comes from | a `[[sources]]` block in `sources.toml` (`title`, `files`, and `url`, `access`, `license`, `citation`, ...), then `useful-views sync` |
 | Run one recipe now | `useful-views run <recipe>` |
 | Update the ledger after a sync | `useful-views cookbook` |
 | Check in CI that the ledger is current (needs no data) | `useful-views cookbook --check` |

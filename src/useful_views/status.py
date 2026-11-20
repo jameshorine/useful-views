@@ -10,16 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import ProjectError, UsefulViewsError, warn
-from .paths import CATALOG, RECIPES, VIEWS, UnreadableFolder, exists_exact, has_content, listdir
+from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, UnreadableFolder, exists_exact, has_content, listdir
 from .project import find_root
 from .recipe import declared_paths, read_declaration
 from .record import load_datapackage, render_catalog
 from .cookbooks import COOKBOOK, read_cookbook, build, render
+from .sources import SOURCES, with_sources
 from .syncing import plan_sync
 
 # Every kind of finding, in the order check() reports them, with its meaning.
 KIND_MEANINGS = {
     "unreadable-recipe": "A recipe folder whose recipe.toml is missing or cannot be read.",
+    "unreadable-sources": "sources.toml cannot be read, or does not have the shape it needs. Until it is fixed, "
+                          "the source details in datapackage.json are kept as they were recorded.",
     "refused": "A recipe breaks a rule, so run and sync would refuse it. The finding names the rule.",
     "missing-input": "An input a recipe.toml declares is not on disk.",
     "never-run": "A recipe that has never run successfully.",
@@ -29,6 +32,8 @@ KIND_MEANINGS = {
                    "only has its record removed.",
     "missing-recipe-folder": "datapackage.json records a recipe whose folder is gone. sync removes the record.",
     "missing-view": "A recorded view whose file is missing.",
+    "stale-sources": "The source details in datapackage.json do not match sources.toml (it was edited since the "
+                     "last sync). useful-views sync writes them again, without running any recipe.",
     "stale-cookbook": "cookbook.json does not match the recorded recipes. Update it with useful-views cookbook.",
     "stale-catalog": "useful-views/README.md does not match datapackage.json (edited by hand, or left from a "
                      "merge). useful-views sync writes it again.",
@@ -37,7 +42,8 @@ KIND_MEANINGS = {
 KINDS = tuple(KIND_MEANINGS)
 
 # Kinds that `useful-views sync` resolves by itself.
-SYNCABLE = frozenset({"never-run", "out-of-date", "missing-view", "missing-recipe-folder", "stale-catalog"})
+SYNCABLE = frozenset({"never-run", "out-of-date", "missing-view", "missing-recipe-folder", "stale-sources",
+                      "stale-catalog"})
 
 
 def syncable(finding: "Finding") -> bool:
@@ -50,9 +56,10 @@ class Finding:
     """One problem `check` found.
 
     Attributes:
-        kind: What kind of problem: one of "unreadable-recipe", "refused",
-            "missing-input", "never-run", "out-of-date", "missing-recipe-folder",
-            "missing-view", "stale-cookbook", "stale-catalog" or "stray-file".
+        kind: What kind of problem: one of "unreadable-recipe",
+            "unreadable-sources", "refused", "missing-input", "never-run",
+            "out-of-date", "missing-recipe-folder", "missing-view",
+            "stale-sources", "stale-cookbook", "stale-catalog" or "stray-file".
             The check findings reference lists what each means.
         path: The file or folder concerned, relative to the project root.
         message: What is wrong and what to do about it.
@@ -264,6 +271,18 @@ def check(*, root: str | Path | None = None) -> list[Finding]:
                     recipe=name,
                 )
             )
+
+    if plan.sources.error is not None:
+        findings.append(Finding("unreadable-sources", SOURCES, plan.sources.error))
+    elif with_sources(data, plan.sources, recorded=data) != data:
+        findings.append(
+            Finding(
+                "stale-sources",
+                DATAPACKAGE,
+                f"The source details in {DATAPACKAGE} do not match {SOURCES}, which was edited since the last sync. "
+                "useful-views sync writes them again, without running any recipe.",
+            )
+        )
 
     try:
         current = read_cookbook(project)

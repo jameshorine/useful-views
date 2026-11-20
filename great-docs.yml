@@ -46,6 +46,7 @@ user_guide:
       - concepts/projects.md
       - concepts/steps.md
       - concepts/recipes.md
+      - concepts/sources.md
       - concepts/running.md
       - concepts/records.md
       - concepts/cookbook.md

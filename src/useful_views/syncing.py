@@ -18,7 +18,7 @@ from pathlib import Path
 from .cookbooks import stale_warning
 from .errors import ProjectError, RecipeRefused, UsefulViewsError, UsefulViewsWarning, warn
 from .lock import project_lock
-from .paths import CATALOG, DATAPACKAGE, RECIPES, WORK, exists_exact, has_content, is_file, listdir
+from .paths import CATALOG, DATAPACKAGE, RAW, RECIPES, WORK, exists_exact, has_content, is_file, listdir
 from .project import find_root
 from .recipe import Recipe, declared_paths, load_recipe, read_declaration, resolve_name
 from .record import (
@@ -27,6 +27,9 @@ from .record import (
     write_generated,
 )
 from .rules import Others, check_static
+from .sources import (
+    RESOURCE_FIELDS, SourcesState, load_sources, undescribed, undescribed_note, unreadable_note, with_sources,
+)
 from .runner import _remove_outputs, _run, _write, pulled_views, rmtree
 
 
@@ -87,6 +90,9 @@ class Plan:
     stale_inputs: dict[str, list[str]] = field(default_factory=dict)
     refusals: list[RecipeRefused] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # sources.toml as read for this plan (its error is not among `warnings`:
+    # sync warns about it, and check reports it as a finding).
+    sources: SourcesState = field(default_factory=SourcesState)
 
     @property
     def stale(self) -> set[str]:
@@ -171,6 +177,16 @@ def _unordered(data: dict) -> dict:
         return json.dumps(item, sort_keys=True, ensure_ascii=False)
 
     return {**data, **{k: sorted(data[k], key=key) for k in ("resources", "recipes") if isinstance(data.get(k), list)}}
+
+
+def _sources_changed(before: dict, after: dict) -> bool:
+    """True if a raw file recorded both before and after has other source
+    details (from sources.toml) after."""
+    def fields(data: dict) -> dict:
+        return {r["path"]: {k: r.get(k) for k in RESOURCE_FIELDS} for r in data["resources"] if "producedBy" not in r}
+
+    old, new = fields(before), fields(after)
+    return any(old[p] != new[p] for p in old.keys() & new.keys())
 
 
 def _unjudged_notes(data: dict, gone: set[str], running: set[str]) -> list[str]:
@@ -414,6 +430,15 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
                     "Change the inputs in its recipe.toml."
                 )
 
+        # Where the raw files come from (sources.toml): notes only, never a refusal.
+        sources = load_sources(project)
+        notes.extend(sources.warnings)
+        raw_read = {p for r in loaded.values() for p in r.inputs if p.startswith(f"{RAW}/")}
+        raw_read |= {p for r in kept for p in r["inputs"] if p.startswith(f"{RAW}/")}
+        missing = undescribed(sources, raw_read)
+        if missing:
+            notes.append(undescribed_note(missing))
+
     unique: dict[tuple, RecipeRefused] = {}
     for r in refusals:
         unique.setdefault((r.recipe, r.rule, r.detail), r)
@@ -423,6 +448,7 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
         to_delete=to_delete, order=order, reasons=reasons, refusals=list(unique.values()),
         stale_inputs={n: changed_inputs[n] for n, why in reasons.items() if why == "input-data-changed"},
         warnings=list(dict.fromkeys(found + notes)),
+        sources=sources,
     )
 
 
@@ -540,12 +566,16 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     known: dict = {}  # fingerprints taken during this sync, so a view made is not hashed again when read
     _refuse_pulled_views(project, plan, known)
     collected = list(plan.warnings)
+    if plan.sources.error is not None:
+        note = unreadable_note(plan.sources)
+        collected.append(note)
+        warn(note)
 
     # Remove what is no longer declared: the records first, then the files,
     # so a file that cannot be deleted is never still claimed by a record.
     views, raws = split_resources(plan.data)
     views = {p: v for p, v in views.items() if p not in plan.gone}
-    data = assemble(project, plan.kept, views, raws, plan.data)
+    data = with_sources(assemble(project, plan.kept, views, raws, plan.data), plan.sources, recorded=plan.data)
     before = {}  # as each generated file was, line endings aside (as check and git compare them)
     for rel in (DATAPACKAGE, CATALOG):
         try:
@@ -559,6 +589,15 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     # catalog that only differs in the order sync now writes is not hand-edited.
     if before[CATALOG] != render_catalog(plan.data) and not (plan.removed or plan.dropped):
         note = f"{CATALOG} did not match datapackage.json, so sync wrote it again."
+        collected.append(note)
+        warn(note)
+    if _sources_changed(plan.data, data):
+        if plan.sources.sources is None:
+            note = (f"There is no sources.toml any more, so sync removed the source details from {DATAPACKAGE}; no "
+                    "recipe needs to run for that.")
+        else:
+            note = (f"sync updated the source details in {DATAPACKAGE} from sources.toml; no recipe needs to run "
+                    "for that.")
         collected.append(note)
         warn(note)
     if before[DATAPACKAGE] != render_datapackage(data) and _unordered(data) == _unordered(plan.data):

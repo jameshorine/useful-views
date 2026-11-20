@@ -21,7 +21,9 @@ whenever every recorded file is present. It sits at the project root because
 it describes files in both `raw/` and `useful-views/`.
 
 - `resources` lists every raw file a recorded recipe read, then every view,
-  each with its columns and their types. A view also has its `fingerprint`
+  each with its columns and their types. A raw file also has its `sources`
+  and `licenses` when [`sources.toml`](sources.md) describes it. A view also
+  has its `fingerprint`
   and `producedBy`: the recipe that made it, that recipe's inputs, and the
   fingerprints the views among those inputs had when it ran (see
   [Fingerprints](#fingerprints) below).
@@ -93,7 +95,7 @@ This is how the parts of `datapackage.json` refer to each other:
 ```text
 datapackage.json
 ├── resources                    one entry per file
-│   ├── a raw file               name, path, format, schema
+│   ├── a raw file               name, path, format, sources and licenses (from sources.toml), schema
 │   └── a view
 │       ├── name, path           the view's path identifies it
 │       ├── fingerprint          what the view holds, as a data hash

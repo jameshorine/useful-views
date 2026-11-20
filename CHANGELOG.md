@@ -6,6 +6,18 @@ All notable changes to useful-views are recorded here. Versions follow
 
 ## Unreleased
 
+- Added `sources.toml`: an optional file at the project root that says where
+  each raw file comes from, one `[[sources]]` block per source (title, files,
+  url, doi, access, cost, time, obtained, license, citation, and whether its
+  files are shared). useful-views copies the details onto each raw file's
+  record in `datapackage.json` (Data Package `sources` and `licenses`), and
+  the catalog and cookbook list them. Changing them never makes a recipe out
+  of date: `check` reports `stale-sources`, and `sync` writes them again
+  without running anything; `cookbook --check` catches it in CI. A
+  `sources.toml` that cannot be read is reported as `unreadable-sources`.
+  Once a project has one, raw files that no source covers get a note. For
+  the Data and Code Availability Standard (#22, #23). The `pwt` example has
+  one.
 - Breaking: `recipe.toml` now lists the recipe's steps, so it describes
   the whole recipe: its inputs, its outputs, and its steps in the order they
   run, with what each does. Each

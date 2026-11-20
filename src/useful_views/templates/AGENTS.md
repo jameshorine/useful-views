@@ -19,6 +19,10 @@ Read `README.md`, `recipes/*/recipe.toml` and `useful-views/README.md` first.
   `description` is one sentence saying what the step does to the data.
   When you add, rename or remove a step file, change its block too. Save
   step files as UTF-8; comments in them are not read.
+- When a recipe reads a new raw file, describe it in `sources.toml` (a
+  `[[sources]]` block with at least `title` and `files`; ask the user for
+  its source, license and citation rather than guessing), then run
+  `useful-views sync`.
 - To build: `useful-views sync`. After editing a step's code in recipe X:
   `useful-views run X`, then what its warnings say to run. After a
   `git pull`, a branch switch or a raw file replaced under the same name:

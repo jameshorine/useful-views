@@ -6,7 +6,9 @@ TODO: say what this data project is for and who maintains it.
 
 TODO: for each file in `raw/`, say where it came from, when it was
 downloaded, its license, and how to cite it. `raw/` is not committed to git,
-so this is how a teammate finds the data again.
+so this is how a teammate finds the data again. Write the same details in
+`sources.toml`, a `[[sources]]` block per source, and useful-views records
+them in `datapackage.json` and the catalog.
 
 ## How this project is organised
 
