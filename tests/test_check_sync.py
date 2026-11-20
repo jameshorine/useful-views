@@ -32,14 +32,16 @@ import pytest
 import useful_views as uvs
 
 from conftest import (
-    CliDriver,
     ApiDriver,
+    CliDriver,
     add_raw_csv,
     generated,
     make_views_step,
+    relist,
     snapshot,
     write,
     write_recipe,
+    write_toml,
 )
 
 KIND_ORDER = [
@@ -302,6 +304,7 @@ def test_failed_run_leaves_views_missing_and_check_reports_them(driver, project)
     recorded_project(project)
     before = generated(project)
     write(project, "recipes/alpha/01_make.py", FAILING_STEP)
+    relist(project, "alpha")
     out = driver.run("alpha")
     assert not out.ok
     assert generated(project) == before
@@ -418,7 +421,7 @@ def build_every_kind(root: Path) -> None:
     write_recipe(root, "wrong", inputs=["raw/lost_src.csv"], outputs=["work/wrong.parquet"])
     # out-of-date: recorded, then its description edited.
     recorded_project(root, "edited", "useful-views/edited.parquet", "raw/edited_src.csv")
-    write(root, "recipes/edited/recipe.toml",
+    write_toml(root, "recipes/edited/recipe.toml",
           'description = "Edited since its last run."\ninputs = ["raw/edited_src.csv"]\n'
           'outputs = ["useful-views/edited.parquet"]\n')
     # unreadable-recipe (last, so the runs above do not warn about it).
@@ -595,7 +598,7 @@ def test_sync_rebuilds_a_fresh_clone(driver, project):
 def test_sync_reruns_a_changed_recipe_and_everything_downstream(driver, project):
     chain_project(project)
     uvs.sync(root=project)
-    write(project, "recipes/up/recipe.toml",
+    write_toml(project, "recipes/up/recipe.toml",
           'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
     write(project, "recipes/up/01_make.py",  # and its data changes too
           "# Write other data.\nimport pyarrow as pa, pyarrow.parquet as pq\n"
@@ -608,7 +611,7 @@ def test_sync_reruns_a_changed_recipe_and_everything_downstream(driver, project)
 def test_sync_runs_downstream_even_when_a_changed_recipe_makes_the_same_data(project):
     chain_project(project)
     uvs.sync(root=project)
-    write(project, "recipes/up/recipe.toml",
+    write_toml(project, "recipes/up/recipe.toml",
           'description = "Changed."\ninputs = ["raw/src.csv"]\noutputs = ["useful-views/up.parquet"]\n')
     result = uvs.sync(root=project)
     # up made the same data, but a step can see what a data hash leaves out, so down runs too.
@@ -621,6 +624,7 @@ def test_sync_does_not_rerun_upstream_when_only_downstream_changed(driver, proje
     uvs.sync(root=project)
     write(project, "recipes/down/01_make.py",
           make_views_step(["useful-views/down.parquet"], description="A new description."))
+    relist(project, "down")
     out = driver.sync()
     assert out.ok and ran(driver, out) == ["down"]
 
@@ -663,7 +667,7 @@ def test_sync_removes_a_deleted_recipe_its_record_and_its_view_files(driver, pro
 
 def test_sync_removes_outputs_a_recipe_no_longer_declares(driver, project):
     two_recipe_project(project)
-    write(project, "recipes/beta/recipe.toml",
+    write_toml(project, "recipes/beta/recipe.toml",
           'description = "Test recipe beta."\ninputs = ["raw/shared.csv", "raw/beta_src.csv"]\n'
           'outputs = ["useful-views/beta.parquet"]\n')
     write(project, "recipes/beta/01_make.py", make_views_step(["useful-views/beta.parquet"]))

@@ -38,6 +38,7 @@ def test_reference_project_from_empty_folder(tmp_path):
     root = uvs.init(tmp_path / "reference")
     shutil.copy(REFERENCE / "raw" / "pwt110_bra_deu_esp_usa.csv", root / "raw")
     shutil.copytree(REFERENCE / "recipes", root / "recipes", dirs_exist_ok=True)
+    shutil.copy(REFERENCE / "sources.toml", root)
     uvs.run("pwt_panel", root=root)
     uvs.run("gdp_per_capita", root=root)
     assert_matches_reference(root)
@@ -49,6 +50,7 @@ def test_reference_project_via_cli(tmp_path):
     root = tmp_path / "reference"
     shutil.copy(REFERENCE / "raw" / "pwt110_bra_deu_esp_usa.csv", root / "raw")
     shutil.copytree(REFERENCE / "recipes", root / "recipes", dirs_exist_ok=True)
+    shutil.copy(REFERENCE / "sources.toml", root)
     cli = CliDriver(root)
     assert cli.run("pwt_panel").ok
     assert cli.run("gdp_per_capita").ok

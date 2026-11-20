@@ -1,4 +1,3 @@
-# Reshape the wide export (one column per year) into one row per country, variable and year.
 import polars as pl
 
 wide = pl.read_csv("raw/pwt110_bra_deu_esp_usa.csv")

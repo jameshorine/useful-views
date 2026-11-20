@@ -4,6 +4,62 @@ All notable changes to useful-views are recorded here. Versions follow
 [semantic versioning](https://semver.org/); while the version starts with
 0, a minor release may change behaviour.
 
+## 0.3.0 (2026-11-20)
+
+### Breaking changes
+
+- `recipe.toml` now lists the recipe's steps. Each step is a `[[steps]]`
+  block at the end of the file, with `file`, the step file's name, and
+  `description`, one sentence on what the step does to the data. The blocks
+  must list exactly the `NN_name.py` files in the folder, in number order.
+  Rule 2 is now "Steps are numbered and listed". `new-recipe` writes one
+  block, for `01_first_step.py`.
+- Rule 1 now covers the `[[steps]]` blocks. A recipe with no `[[steps]]`,
+  or with a step description that is missing or starts with TODO, is
+  refused under rule 1 (it was rule 2). `RecipeRefused.rule` and the `rule`
+  in `--json` output change to match.
+- A step file's top comment is no longer its description, and its comments
+  aren't read. useful-views only checks that a step file can be read as
+  UTF-8 (rule 2). The records keep the same fields: each step's `name`,
+  `path` and `description`.
+
+### New features
+
+- `sources.toml`, an optional file at the project root, says where each raw
+  file comes from (#22, #23). It has one `[[sources]]` block per source:
+  title, files, URL or DOI, access, cost, time, date obtained, license,
+  citation, and whether its files are shared.
+  - useful-views copies the details into each raw file's record in
+    `datapackage.json` (Data Package `sources` and `licenses`). The catalog
+    and the cookbook list them.
+  - Editing `sources.toml` never makes a recipe out of date. `check`
+    reports `stale-sources`, and `sync` writes the details without running
+    anything. `cookbook --check` catches it in CI.
+  - A `sources.toml` that can't be read is reported as
+    `unreadable-sources`.
+  - Once a project has one, raw files with no source get a note.
+
+### Other changes
+
+- The `pwt` example uses the new format and has a `sources.toml`. `example`
+  downloads tag `examples-v3` of useful-views-data.
+- The docs are reorganised and rewritten (#31). There's a short README, a
+  Get started walkthrough, one home page for each topic, and examples that
+  show real output.
+
+### Upgrading
+
+- In each `recipe.toml`, add a `[[steps]]` block at the end for each step
+  file, in order, with its old top comment as the description. Until you
+  do, `run` and `sync` refuse the recipe, and `check` reports it with a
+  block to paste for each step file.
+- Copy the descriptions word for word. They then match the records, so
+  `sync` has nothing to run.
+- Put a description that runs over several lines, or has double quotes in
+  it, in triple quotes (`"""..."""`). Put one with a backslash in triple
+  single quotes (`'''...'''`), which keep it as written. See "Recipes" in
+  the user guide.
+
 ## 0.2.0 (2026-10-30)
 
 Fingerprints: useful-views now records what each view contains, and uses it

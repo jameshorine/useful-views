@@ -13,7 +13,7 @@ import pytest
 
 import useful_views as uvs
 
-from conftest import add_raw_csv, snapshot, write, write_recipe
+from conftest import add_raw_csv, snapshot, write, write_recipe, write_toml
 
 PRINTING_STEP = (
     "# Print something, then write the view.\n"
@@ -166,7 +166,7 @@ def test_check_reports_out_of_date_recipes(project):
     uvs.run("a", root=project)
     assert uvs.check(root=project) == []
     rel = "raw/data.csv"
-    write(project, "recipes/a/recipe.toml",
+    write_toml(project, "recipes/a/recipe.toml",
           f'description = "Changed."\ninputs = ["{rel}"]\noutputs = ["useful-views/a.parquet"]\n')
     assert [f.kind for f in uvs.check(root=project)] == ["out-of-date"]
     assert uvs.sync(root=project).ran == ("a",)

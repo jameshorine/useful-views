@@ -21,9 +21,10 @@ import pyarrow as pa
 from .errors import OutputError, ProjectError, RecipeRefused, StepFailed, warn
 from .fingerprints import DataHashError
 from .lock import project_lock
-from .paths import CATALOG, DATAPACKAGE, RECIPES, VIEWS, WORK, exists_exact
+from .paths import CATALOG, DATAPACKAGE, RAW, RECIPES, VIEWS, WORK, exists_exact, name_key
 from .project import find_root
 from .recipe import Step, load_recipe, resolve_name
+from .sources import load_sources, undescribed, undescribed_note, unreadable_note, with_sources
 from .record import (
     assemble, describe_view, differs_from_record, fingerprints_differ, input_fingerprints, known_fingerprint,
     load_datapackage, retry, run_order, split_resources, understood, write_generated,
@@ -55,7 +56,7 @@ class RunResult:
     Attributes:
         recipe: The recipe that ran.
         outputs: The views it wrote, as paths from the project root.
-        warnings: Warnings issued along the way (also shown as they happen).
+        warnings: Warnings issued along the way, also shown as they happened.
     """
 
     recipe: str
@@ -369,16 +370,14 @@ def _step_failure(step: Step, code: int, stderr: str, recipe: str, project: Path
 def _actual_name(project: Path, rel: str) -> str | None:
     """The name on disk of a file that differs from `rel` only in letter case
     or in how accented letters are encoded, if there is one."""
-    import unicodedata
-
     folder, _, filename = rel.rpartition("/")
-    want = unicodedata.normalize("NFC", filename).casefold()
+    want = name_key(filename)
     try:
         names = os.listdir(project / folder)
     except OSError:
         return None
     for name in names:
-        if name != filename and unicodedata.normalize("NFC", name).casefold() == want:
+        if name != filename and name_key(name) == want:
             return f"{folder}/{name}"
     return None
 
@@ -609,41 +608,56 @@ def _downstream_warnings(project: Path, name: str, loaded, others, views: dict, 
 
 
 def run(recipe: str, *, root: str | Path | None = None) -> RunResult:
-    """Run one recipe's steps in order and record what it produced.
+    """Run one recipe and record what it made.
 
-    Before anything on disk changes, the recipe is checked against the rules
-    (`useful-views rules`). Then its views are deleted and `work/<recipe>/`
-    is emptied, each step runs as its own process (from the project root,
-    with this Python, its output shown as it runs), every declared view must
-    have been written, and the run is recorded in `datapackage.json` and
-    `useful-views/README.md`. Other recipes' records are not changed, and no
-    other recipe is run. If other recipes read this one's views, a warning
-    names them: when the data changed, `useful-views sync` brings them up to
-    date; when it came out the same, they may still give other results (a
-    step can see what a data hash leaves out, such as a time zone), and the
-    warning says what to run. When the records cannot show which, it says
-    why, and to use `useful-views sync --all`.
+    Command line: `useful-views run RECIPE`.
+
+    In order, `run`:
+
+    1. checks the recipe against the rules (`useful-views rules`), before
+       anything on disk changes;
+    2. deletes the recipe's views and empties `work/<recipe>/`;
+    3. runs each step in order as its own process, from the project root,
+       with this Python, showing its output as it runs;
+    4. checks that every declared view was written;
+    5. records the run in `datapackage.json` and `useful-views/README.md`.
+
+    No other recipe runs or has its record changed. If other recipes read
+    this one's views, a warning names them and says what to run:
+
+    - `useful-views sync`, if the data changed;
+    - `useful-views run` for each reader, if the data came out the same. A
+      step can see what a data hash leaves out, such as a time zone, so a
+      reader may still give other results;
+    - `useful-views sync --all`, with the reason, if the records cannot show
+      which.
 
     Args:
         recipe: The recipe's name, as in `"pwt_panel"` or `"recipes/pwt_panel/"`.
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
 
     Returns:
         A `RunResult` naming the views written.
 
     Raises:
-        RecipeRefused: The recipe breaks a rule; nothing changed.
-        StepFailed: A step failed; nothing was recorded and the recipe's views
-            were removed.
+        RecipeRefused: The recipe breaks a rule. Nothing changed.
+        StepFailed: A step failed. Nothing was recorded, and the recipe's
+            views were removed.
         OutputError: A declared view was missing, empty or unreadable after
-            the steps ran; nothing was recorded.
-        ProjectError: Another useful-views command is changing the project;
-            a file could not be written or deleted; or a view the recipe reads
-            holds other data than datapackage.json records (left by a git pull
-            or a branch switch), in which case nothing changed and the message
-            says what to run.
+            the steps ran. Nothing was recorded.
+        ProjectError: Another useful-views command is changing the project,
+            or a file could not be written or deleted. Or a view the recipe
+            reads holds other data than `datapackage.json` records, as after
+            a git pull or a branch switch. Then nothing changed, and the
+            message says what to run.
         ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> uvs.run("gdp_per_capita")
+        RunResult(recipe='gdp_per_capita', outputs=('useful-views/gdp-per-capita.parquet',), warnings=())
+        ```
     """
     project = find_root(root)
     with project_lock(project):
@@ -705,7 +719,8 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
         all_views = {p: r for p, r in old_views.items() if r["producedBy"].get("recipe") != name}
         all_views.update(views)
         all_raws = {**old_raws, **raw_described}
-        written = assemble(project, records, all_views, all_raws, data)
+        sources = load_sources(project)
+        written = with_sources(assemble(project, records, all_views, all_raws, data), sources, recorded=data)
         write_generated(project, written)
     except BaseException:
         # On any failure from here on, a failed run leaves its views absent.
@@ -718,6 +733,13 @@ def _run(project: Path, recipe: str, *, in_sync: bool = False, known: dict | Non
     if not in_sync:
         from .cookbooks import stale_warning
 
+        if sources.error is not None:
+            warn(unreadable_note(sources), collected)
+        for message in sources.warnings:
+            warn(message, collected)
+        missing = undescribed(sources, {p for p in loaded.inputs if p.startswith(f"{RAW}/")})
+        if missing:
+            warn(undescribed_note(missing), collected)
         note = stale_warning(project)
         if note:
             warn(note, collected)

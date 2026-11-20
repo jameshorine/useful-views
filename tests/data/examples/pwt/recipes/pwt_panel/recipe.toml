@@ -1,3 +1,19 @@
 description = "Country-year panel of core Penn World Table variables for Brazil, Germany, Spain and the United States."
 inputs  = ["raw/pwt110_bra_deu_esp_usa.csv"]
 outputs = ["useful-views/pwt-panel.parquet"]
+
+[[steps]]
+file = "01_reshape_long.py"
+description = """
+Reshape the wide export (one column per year) into one row per country,
+variable and year."""
+
+[[steps]]
+file = "02_keep_core_variables.py"
+description = """
+Keep eight core variables: three measures of GDP, population, employment,
+hours worked, human capital and TFP."""
+
+[[steps]]
+file = "03_pivot_to_panel.py"
+description = "Spread the variables into columns, giving one row per country and year."

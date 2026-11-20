@@ -18,7 +18,7 @@ from pathlib import Path
 from .cookbooks import stale_warning
 from .errors import ProjectError, RecipeRefused, UsefulViewsError, UsefulViewsWarning, warn
 from .lock import project_lock
-from .paths import CATALOG, DATAPACKAGE, RECIPES, WORK, exists_exact, has_content, is_file, listdir
+from .paths import CATALOG, DATAPACKAGE, RAW, RECIPES, WORK, exists_exact, has_content, is_file, listdir
 from .project import find_root
 from .recipe import Recipe, declared_paths, load_recipe, read_declaration, resolve_name
 from .record import (
@@ -27,6 +27,9 @@ from .record import (
     write_generated,
 )
 from .rules import Others, check_static
+from .sources import (
+    RESOURCE_FIELDS, SourcesState, load_sources, undescribed, undescribed_note, unreadable_note, with_sources,
+)
 from .runner import _remove_outputs, _run, _write, pulled_views, rmtree
 
 
@@ -35,17 +38,33 @@ class SyncResult:
     """What `sync` did.
 
     Attributes:
-        removed: Recipes whose records were removed because their folder is gone.
-        dropped: Views removed from a record because the recipe no longer declares them.
-        deleted: Files deleted: views no longer declared, and the work/
-            folders of the removed recipes (ending in "/").
+        removed: Recipes whose records were removed, because their folder is gone.
+        dropped: Views removed from a record, because the recipe no longer declares them.
+        deleted: Files deleted: views no longer declared, and the `work/`
+            folders of removed recipes (ending in "/").
         ran: Recipes run, in the order they ran.
-        warnings: Warnings issued along the way (also shown as they happen).
-        reasons: Why each recipe in `ran` ran: "never-run", "changed" (its
-            recipe.toml or steps no longer matched its record),
-            "outputs-changed", "views-missing", "input-data-changed" (a view
-            it reads had been made again with different data since it ran),
-            "upstream" (a view it reads was made again) or "all" (`all=True`).
+        warnings: Warnings issued along the way, also shown as they happened.
+        reasons: Why each recipe in `ran` ran.
+
+            - "never-run": it had never run;
+            - "changed": its recipe.toml or steps no longer matched its record;
+            - "outputs-changed": it no longer declared any view it made;
+            - "views-missing": a view it makes was missing;
+            - "input-data-changed": a view it reads had been made again with
+              different data since it ran;
+            - "upstream": a view it reads was made again;
+            - "all": `all=True`.
+
+    Examples:
+        ```python
+        >>> import shutil
+        >>> shutil.rmtree("recipes/gdp_per_capita")
+        >>> result = uvs.sync()
+        >>> result.removed
+        ('gdp_per_capita',)
+        >>> result.deleted
+        ('useful-views/gdp-per-capita.parquet', 'work/gdp_per_capita/')
+        ```
     """
 
     removed: tuple[str, ...]
@@ -87,6 +106,9 @@ class Plan:
     stale_inputs: dict[str, list[str]] = field(default_factory=dict)
     refusals: list[RecipeRefused] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # sources.toml as read for this plan (its error is not among `warnings`:
+    # sync warns about it, and check reports it as a finding).
+    sources: SourcesState = field(default_factory=SourcesState)
 
     @property
     def stale(self) -> set[str]:
@@ -171,6 +193,16 @@ def _unordered(data: dict) -> dict:
         return json.dumps(item, sort_keys=True, ensure_ascii=False)
 
     return {**data, **{k: sorted(data[k], key=key) for k in ("resources", "recipes") if isinstance(data.get(k), list)}}
+
+
+def _sources_changed(before: dict, after: dict) -> bool:
+    """True if a raw file recorded both before and after has other source
+    details (from sources.toml) after."""
+    def fields(data: dict) -> dict:
+        return {r["path"]: {k: r.get(k) for k in RESOURCE_FIELDS} for r in data["resources"] if "producedBy" not in r}
+
+    old, new = fields(before), fields(after)
+    return any(old[p] != new[p] for p in old.keys() & new.keys())
 
 
 def _unjudged_notes(data: dict, gone: set[str], running: set[str]) -> list[str]:
@@ -414,6 +446,15 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
                     "Change the inputs in its recipe.toml."
                 )
 
+        # Where the raw files come from (sources.toml): notes only, never a refusal.
+        sources = load_sources(project)
+        notes.extend(sources.warnings)
+        raw_read = {p for r in loaded.values() for p in r.inputs if p.startswith(f"{RAW}/")}
+        raw_read |= {p for r in kept for p in r["inputs"] if p.startswith(f"{RAW}/")}
+        missing = undescribed(sources, raw_read)
+        if missing:
+            notes.append(undescribed_note(missing))
+
     unique: dict[tuple, RecipeRefused] = {}
     for r in refusals:
         unique.setdefault((r.recipe, r.rule, r.detail), r)
@@ -423,6 +464,7 @@ def plan_sync(project: Path, *, rerun_all: bool = False) -> Plan:
         to_delete=to_delete, order=order, reasons=reasons, refusals=list(unique.values()),
         stale_inputs={n: changed_inputs[n] for n, why in reasons.items() if why == "input-data-changed"},
         warnings=list(dict.fromkeys(found + notes)),
+        sources=sources,
     )
 
 
@@ -483,48 +525,64 @@ def _stopped(plan: Plan, failed: str, ran: list[str], rerun_all: bool, interrupt
 
 
 def sync(*, root: str | Path | None = None, all: bool = False) -> SyncResult:
-    """Make the views and datapackage.json match the recipe folders, like `uv sync`.
+    """Make the views match the recipe folders, like `uv sync`.
 
-    First, every recipe folder is checked against the rules; if any recipe
-    would be refused, sync raises before changing anything, listing every
-    problem. Then it removes the records and view files of recipes whose
-    folder is gone and of outputs a recipe no longer declares, and runs,
-    upstream first, every recipe that has never run, whose recipe folder no
-    longer matches its record, whose views are missing, or that read a view
-    since made again with different data (`input-data-changed`), then the
-    recipes downstream of those: a data hash that comes out the same does not
-    show that a recipe reading the view would give the same results (a step
-    can see what the hash leaves out, such as a time zone), so they run too.
-    Progress lines go to standard error; steps' own output appears as they run.
+    Command line: `useful-views sync [--all]`.
 
-    Before any recipe runs, the views of each recipe that runs after another
-    one it reads from are removed: they are made again from new views. So if
-    sync stops, however it stops (a failure, an interrupt, the process
-    killed), those views are missing, and the next sync makes them. What it
-    had already done is kept.
+    In order, `sync`:
+
+    1. checks every recipe against the rules, and if any would be refused,
+       raises before changing anything, listing every problem;
+    2. removes the records and view files of recipes whose folder is gone,
+       and of outputs a recipe no longer declares;
+    3. removes the views of each recipe that will run after one it reads
+       from;
+    4. runs, upstream first, each recipe that:
+       - has never run;
+       - no longer matches its record;
+       - is missing a view;
+       - read a view since made again with different data
+         (`input-data-changed`);
+    5. runs the recipes downstream of those too, even if the data hash of
+       what they read is unchanged. A step can see what the hash leaves out,
+       such as a time zone.
+
+    However `sync` stops (a failure, an interrupt, the process killed), what
+    it had done is kept. The views removed in step 3 are missing, and the
+    next sync makes them. Progress lines go to standard error. Steps' own
+    output appears as they run.
 
     Args:
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
-        all: Run every recipe, not only those that are missing or changed.
-            Use it after editing the code inside a step, which sync does not
-            notice by itself, and after pulling or switching branches.
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
+        all: Run every recipe. Use it after editing the code inside a step,
+            which `sync` does not notice, and after a pull or a branch switch.
 
     Returns:
         A `SyncResult` saying what was removed, deleted and run.
 
     Raises:
-        RecipeRefused: A recipe breaks a rule; nothing changed. Its
+        RecipeRefused: A recipe breaks a rule. Nothing changed. Its
             `refusals` lists every problem found.
-        StepFailed, OutputError: A recipe failed while running. The removals
-            and the recipes that ran before it are kept; the exception's
-            `sync_result` says what was done, and its message what to run next.
-        ProjectError: Another useful-views command is changing the project;
-            a file could not be written or deleted; or a recipe that would run
-            reads a view whose file holds other data than datapackage.json
-            records (left by a git pull or a branch switch), in which case
-            nothing changed and the message says what to run.
+        StepFailed, OutputError: A recipe failed. The removals, and the
+            recipes that ran before it, are kept. The error's `sync_result`
+            says what was done, and its message what to run next.
+        ProjectError: Another useful-views command is changing the project,
+            or a file could not be written or deleted. Or a recipe that would
+            run reads a view whose file holds other data than
+            `datapackage.json` records, as after a git pull or a branch
+            switch. Then nothing changed, and the message says what to run.
         ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> uvs.sync()
+        SyncResult(removed=(), dropped=(), deleted=(), ran=(), warnings=(), reasons={})
+        >>> import os
+        >>> os.remove("useful-views/gdp-per-capita.parquet")
+        >>> uvs.sync().reasons
+        {'gdp_per_capita': 'views-missing'}
+        ```
     """
     project = find_root(root)
     with project_lock(project):
@@ -540,12 +598,16 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     known: dict = {}  # fingerprints taken during this sync, so a view made is not hashed again when read
     _refuse_pulled_views(project, plan, known)
     collected = list(plan.warnings)
+    if plan.sources.error is not None:
+        note = unreadable_note(plan.sources)
+        collected.append(note)
+        warn(note)
 
     # Remove what is no longer declared: the records first, then the files,
     # so a file that cannot be deleted is never still claimed by a record.
     views, raws = split_resources(plan.data)
     views = {p: v for p, v in views.items() if p not in plan.gone}
-    data = assemble(project, plan.kept, views, raws, plan.data)
+    data = with_sources(assemble(project, plan.kept, views, raws, plan.data), plan.sources, recorded=plan.data)
     before = {}  # as each generated file was, line endings aside (as check and git compare them)
     for rel in (DATAPACKAGE, CATALOG):
         try:
@@ -559,6 +621,15 @@ def _sync(project: Path, rerun_all: bool) -> SyncResult:
     # catalog that only differs in the order sync now writes is not hand-edited.
     if before[CATALOG] != render_catalog(plan.data) and not (plan.removed or plan.dropped):
         note = f"{CATALOG} did not match datapackage.json, so sync wrote it again."
+        collected.append(note)
+        warn(note)
+    if _sources_changed(plan.data, data):
+        if plan.sources.sources is None:
+            note = (f"There is no sources.toml any more, so sync removed the source details from {DATAPACKAGE}; no "
+                    "recipe needs to run for that.")
+        else:
+            note = (f"sync updated the source details in {DATAPACKAGE} from sources.toml; no recipe needs to run "
+                    "for that.")
         collected.append(note)
         warn(note)
     if before[DATAPACKAGE] != render_datapackage(data) and _unordered(data) == _unordered(plan.data):

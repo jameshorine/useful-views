@@ -81,7 +81,7 @@ def _cli_page() -> str:
            "Every command also runs as `python -m useful_views ...`.\n\n",
            "```text\n", parser.format_usage(), "```\n\n"]
     _, options = _options(parser)
-    out += ["## Global options\n\n", "These go before the command; `-C` and `--json` may also go after it.\n\n",
+    out += ["## Global options\n\n", "These go before the command. `-C` and `--json` may also go after it.\n\n",
             _table("Option", options), "\n"]
     for name, command in sub.choices.items():
         arguments, options = _options(command)
@@ -97,9 +97,9 @@ def _cli_page() -> str:
 
 def rules_page() -> str:
     out = [_front("Rules"),
-           "`run` and `sync` refuse a recipe that breaks one of these rules, before changing anything on disk, "
-           "and `check` reports it as `refused`. A refusal names the rule; from Python, "
-           "`RecipeRefused.rule` is its number. On the command line: `useful-views rules`.\n\n"]
+           "`run` and `sync` refuse a recipe that breaks one of these rules, before changing anything on disk. "
+           "`check` reports it as `refused`. A refusal names the rule, and `RecipeRefused.rule` is its number. "
+           "To list the rules: `useful-views rules`.\n\n"]
     for rule in RULES.values():
         out += [f"## Rule {rule.number}: {rule.title}\n\n", rule.detail, "\n\n"]
     out += ["A recipe name that does not match a folder in `recipes/`, or a folder name that is not allowed, "
@@ -109,18 +109,26 @@ def rules_page() -> str:
 
 def findings_page() -> str:
     rows = [(f"`{kind}`", meaning) for kind, meaning in KIND_MEANINGS.items()]
+    fields = [
+        ("`kind`", "The kind of finding, from the table above."),
+        ("`path`", "The file or folder concerned, relative to the project root."),
+        ("`message`", "What is wrong, and what to do about it."),
+        ("`rule`", "For `refused`, the rule's number."),
+        ("`recipe`", "The recipe concerned, if any."),
+        ("`reason`", "For `out-of-date`: `changed`, `outputs-changed`, `outputs-dropped`, `input-data-changed` or "
+                     "`upstream`. For `missing-input`: `made-by-recipe`."),
+    ]
     return "".join([
         _front("Check findings"),
-        "`useful-views check` (Python: `check()`) changes nothing and reports these kinds of finding, in this "
-        "order. Each finding's message says what to do about it. With `--json`, each finding is an object with "
-        "`kind`, `path`, `message`, `rule` (for `refused`, the rule's number), `recipe` (the recipe concerned, "
-        "if any) and `reason` (for `out-of-date`: `changed`, `outputs-changed`, `outputs-dropped`, "
-        "`input-data-changed` or `upstream`; for `missing-input`: `made-by-recipe`), and the document "
-        "also has a `warnings` list. The command exits with 1 when it finds anything.\n\n",
+        "`useful-views check` (Python: `check()`) changes nothing. It reports these kinds of finding, in this "
+        "order, and exits with 1 when it finds anything. Each finding's message says what to do about it.\n\n",
         _table("Kind", rows, "Meaning"),
+        "\nWith `--json`, each finding is an object with these fields, and the document also has a `warnings` "
+        "list.\n\n",
+        _table("Field", fields, "Value"),
         "\n`check` does not notice changes inside a step's code or to a raw file until that recipe runs "
-        "again, nor view files on disk that no longer match their record (as after a `git pull`): then "
-        "use `useful-views sync --all`.\n",
+        "again. Nor does it notice view files that no longer match their record, as after a `git pull`. For "
+        "those, use `useful-views sync --all`.\n",
     ])
 
 

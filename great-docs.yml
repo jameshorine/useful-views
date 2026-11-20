@@ -29,80 +29,102 @@ hero:
   name: false          # the logo already says "useful-views"
 parser: google
 dynamic: true
+# Run the code in .qmd pages on every build, so the output they show is what
+# the current code prints.
+freeze: false
 repo: https://github.com/jameshorine/useful-views
 site_url: https://jameshorine.github.io/useful-views/
 
-# The user guide is the Markdown pages in user_guide/, in this order (like the
-# nav: list in an mkdocs.yml). A new page must be added here to be linked;
-# tests/test_docs.py checks that every page is listed. Images and CSS stay in
-# docs/.
+# The user guide is the pages in user_guide/, in this order (like the nav:
+# list in an mkdocs.yml). Pages that show output are .qmd: Quarto runs their
+# code when the site is built. A new page must be added here to be linked;
+# tests/test_docs.py checks that every page is listed. docs/STYLE.md says
+# how the pages are written and which page is home to each topic. Images
+# and CSS stay in docs/.
 user_guide:
   - section: Get started
     contents:
+      - quickstart.qmd
       - installation.md
-      - quickstart.md
-  - section: Concepts
+  - section: Projects and recipes
     contents:
       - concepts/projects.md
-      - concepts/steps.md
       - concepts/recipes.md
-      - concepts/running.md
+      - concepts/steps.md
+      - concepts/sources.md
+  - section: Keeping views current
+    contents:
+      - concepts/running.qmd
+      - concepts/stale-views.md
+      - guides/fingerprints.qmd
+  - section: Records
+    contents:
       - concepts/records.md
       - concepts/cookbook.md
-      - concepts/stale-views.md
-  - section: Guides
+  - section: Working with others
     contents:
+      - guides/python.qmd
       - guides/ai-tools.md
-      - guides/fingerprints.md
+      - guides/compare.md
   - section: Reference
     contents:
       - reference/cli.md
+      - reference/rules.md
       - reference/check-findings.md
       - reference/environment.md
-      - reference/rules.md
       - reference/data-hash.md
 
+# The API reference. With no `title`, the navbar still says "Reference". Each
+# entry's line in the index is the first line of its docstring.
 reference:
-  - title: Functions
-    desc: Create a project, run its recipes, and report its state.
-    contents:
-      - init
-      - example
-      - new_recipe
-      - run
-      - sync
-      - check
-      - cookbook
-      - root
-  - title: Results
-    desc: What run, sync, check and cookbook return.
-    contents:
-      - RunResult
-      - SyncResult
-      - Finding
-      - CookbookResult
-  - title: Fingerprints
-    desc: A fingerprint of a parquet file's contents, by the data hash rules.
-    contents:
-      - data_hash
-  - title: Errors and warnings
-    desc: Every error is a UsefulViewsError and carries its facts as attributes and to_dict().
-    contents:
-      - UsefulViewsError
-      - RecipeRefused
-      - StepFailed
-      - OutputError
-      - ProjectError
-      - ProjectNotFound
-      - ExampleError
-      - CookbookError
-      - DataHashError
-      - UsefulViewsWarning
-  - title: Rules
-    desc: The numbered rules a recipe must follow.
-    contents:
-      - RULES
-      - Rule
+  desc: Examples assume `import useful_views as uvs`, and run in the pwt example after `useful-views sync`.
+  sections:
+    - title: Projects
+      desc: Make a project, or get the example.
+      contents:
+        - init
+        - example
+        - root
+    - title: Recipes
+      desc: Start a recipe, then make its views.
+      contents:
+        - new_recipe
+        - run
+        - sync
+    - title: Checking
+      desc: Find problems, and write the cookbook.
+      contents:
+        - check
+        - cookbook
+    - title: Fingerprints
+      desc: The data hash of a parquet file.
+      contents:
+        - data_hash
+    - title: Results
+      desc: What run, sync and cookbook return, and what check finds.
+      contents:
+        - RunResult
+        - SyncResult
+        - Finding
+        - CookbookResult
+    - title: Errors and warnings
+      desc: Every error is a UsefulViewsError, with its facts as attributes and in to_dict().
+      contents:
+        - UsefulViewsError
+        - RecipeRefused
+        - StepFailed
+        - OutputError
+        - ProjectError
+        - ProjectNotFound
+        - ExampleError
+        - CookbookError
+        - DataHashError
+        - UsefulViewsWarning
+    - title: Rules
+      desc: The numbered rules a recipe must follow.
+      contents:
+        - RULES
+        - Rule
 
 skill:
   enabled: true

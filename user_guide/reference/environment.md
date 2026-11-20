@@ -2,59 +2,64 @@
 title: "Environment"
 ---
 
-## How steps run
+How steps run, how commands stop, and what they read and print.
 
-Steps are code: `run` and `sync` execute every step in `recipes/` as you,
-with your permissions, your full environment (including any passwords or
-tokens in environment variables) and your network access, with no sandbox.
-Read the recipes of a project you did not write before running it. `check`,
-`rules` and `cookbook` never run a step.
+## How a step runs
 
-Each step runs as its own process:
+`run` and `sync` run each step as its own process:
 
-- with the same Python interpreter as useful-views (`sys.executable`), so the
-  libraries a step imports must be installed in that environment;
-- with the project root as its working directory;
-- with no standard input, so `input()` and `breakpoint()` fail;
-- with `PYTHONIOENCODING=utf-8` and `PYTHONUNBUFFERED=1` added to the
-  environment, so its output appears as it runs, in any terminal or notebook;
-- in UTF-8 mode (`PYTHONUTF8=1`), so `open()` and `read_text()` read and
-  write UTF-8 by default on Windows as on macOS and Linux. Pass `encoding=`
-  to read a file in another encoding.
+| Setting | Value |
+|---|---|
+| Interpreter | The Python that runs useful-views (`sys.executable`), so the libraries a step imports must be installed there. After a `ModuleNotFoundError`, the message names the interpreter and the command that installs the package into it. |
+| Working directory | The project root. |
+| Standard input | None, so `input()` and `breakpoint()` fail. |
+| Environment variables | Yours, including any passwords or tokens, plus the three below. |
+| `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1` | The step's output appears as it runs, in any terminal or notebook. |
+| `PYTHONUTF8=1` | `open()` and `read_text()` read and write UTF-8 by default, on Windows as on macOS and Linux. Pass `encoding=` for a file in another encoding. |
+| Permissions and network access | Yours. There is no sandbox. |
 
-A step that fails with `ModuleNotFoundError` gets a message naming the
-interpreter and the command to install the missing package into it.
+Steps are code, so read the recipes of a project you did not write before
+you run it (see [Steps](../concepts/steps.md)). `check`, `rules` and
+`cookbook` never run a step.
 
 ## Stopping a command
 
-Ctrl-C stops the running step, removes the views of the recipe it belongs
-to, and exits with 130. On the command line, SIGTERM and SIGHUP (sent when a
-CI job is cancelled, when a tool's time limit runs out, or when a terminal
-closes) do the same, exiting with 143 and 129; on Windows, Ctrl-Break exits
-with 149. A signal that was already being ignored stays ignored, so
-`nohup useful-views sync &` keeps running after you log out. When `sync` is
-stopped, its message says what it had already done and which command to run
-next.
+Ctrl-C stops the running step, removes the views of its recipe, and exits.
+The command line treats these signals the same way:
 
-`run`, `sync` and `cookbook` hold a lock on the project while they work, in
-`work/.useful-views.lock`, so a second one started meanwhile is refused
-instead of overwriting the first one's records. The operating system
-releases the lock when the command ends, however it ends.
+| Signal | Exit code |
+|---|---|
+| Ctrl-C | 130 |
+| SIGTERM, sent when a CI job is cancelled or a tool's time limit runs out | 143 |
+| SIGHUP, sent when a terminal closes | 129 |
+| Ctrl-Break, on Windows | 149 |
+
+A signal that was already ignored stays ignored, so
+`nohup useful-views sync &` keeps running after you log out. When `sync`
+stops, its message says what it had done and which command to run next.
+
+## The project lock
+
+`run`, `sync` and `cookbook` (when it writes) lock the project while they
+work, in `work/.useful-views.lock`. A second command started meanwhile is
+refused, so it cannot overwrite the first one's records. The operating
+system releases the lock when the command ends, however it ends.
 
 ## Environment variables
 
 | Variable | Effect |
 |---|---|
-| `USEFUL_VIEWS_DATA_URL` | Where `example` downloads from, instead of the pinned tag of the useful-views-data repository: a mirror's URL, or a local copy (a folder path or `file://` URL) laid out like the repository (`examples/<name>/...`). Downloads are still checked against the pinned SHA-256 checksums. Useful without internet access. |
-| `HTTPS_PROXY`, `SSL_CERT_FILE` | Read by Python when `example` downloads: a proxy to go through, and a certificate file for networks that inspect encrypted traffic. |
+| `USEFUL_VIEWS_DATA_URL` | Where `example` downloads from, in place of the pinned tag of the useful-views-data repository. A mirror's URL, or a local copy (a folder path or `file://` URL) laid out like the repository (`examples/<name>/...`), for use without internet access. Downloads are still checked against the pinned SHA-256 checksums. |
+| `HTTPS_PROXY` | A proxy for `example` downloads. Python reads it. |
+| `SSL_CERT_FILE` | A certificate file for `example` downloads, on networks that inspect encrypted traffic. Python reads it. |
 
 ## Output
 
-- Human-readable results go to standard output; warnings, progress lines and
-  error messages go to standard error.
+- Standard output: human-readable results.
+- Standard error: warnings, progress lines and error messages.
 - With `--json`, standard output carries exactly one JSON document, also on
-  errors (`{"ok": false, "error": {...}}`); everything else, including the
-  steps' own output, goes to standard error. The JSON is ASCII-escaped, so it
+  errors (`{"ok": false, "error": {...}}`). Everything else goes to standard
+  error, including the steps' own output. The JSON is ASCII-escaped, so it
   stays valid whatever the console's encoding.
 
-The exit codes are listed in the [command-line reference](cli.md#exit-codes).
+The exit codes are in the [command-line reference](cli.md#exit-codes).

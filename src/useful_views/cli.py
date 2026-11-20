@@ -100,8 +100,8 @@ def _parser() -> argparse.ArgumentParser:
         prog="useful-views",
         description=(
             "Turn raw data into documented derived tables (useful views). Each recipe in recipes/ "
-            "turns declared inputs into declared views by running numbered Python steps, and every "
-            "run is recorded in datapackage.json."
+            "runs numbered Python steps that turn declared inputs into declared views. Every run is "
+            "recorded in datapackage.json."
         ),
         epilog=EXIT_CODES + "\n\nAlso runs as: python -m useful_views",
         formatter_class=formatter,
@@ -136,28 +136,30 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="?", default=None, help="folder to create (default: <name>-example)")
 
     p = add("new-recipe", "create recipes/<name>/ from a template",
-            "Create recipes/NAME/ with a template recipe.toml and a stub step, 01_first_step.py. Both say "
-            "TODO and are refused until you fill them in.")
+            "Create recipes/NAME/ with a template recipe.toml that lists one stub step, 01_first_step.py. "
+            "The recipe is refused until you fill in recipe.toml: its inputs and outputs, and one sentence "
+            "in place of each TODO description.")
     p.add_argument("name", help="the recipe's name: lowercase letters, digits and underscores, like pwt_panel")
 
     p = add("run", "run one recipe and record what it produced",
-            "Run one recipe. It is checked against the rules first (useful-views rules), then its views are "
-            "deleted and work/RECIPE/ emptied, each step runs in numeric order as its own process with this "
-            "Python and the project root as working directory, every declared view must be written, and the "
-            "run is recorded in datapackage.json and useful-views/README.md. Other recipes are not run.")
+            "Run one recipe and record what it made. First the recipe is checked against the rules "
+            "(useful-views rules). Then its views are deleted and work/RECIPE/ emptied. Each step runs in "
+            "numeric order as its own process, with this Python, from the project root. Every declared view "
+            "must be written. The run is recorded in datapackage.json and useful-views/README.md. Other "
+            "recipes are not run.")
     p.add_argument("recipe", help="the recipe's name, as in pwt_panel or recipes/pwt_panel/")
 
     add("check", "report the state of the project",
-        "Report what is missing or out of place, every rule a recipe breaks (refused), and recipes that "
-        "sync would run. Changes nothing. Does not notice changes inside a step's code or to a raw file "
-        "until that recipe runs again, nor view files on disk that no longer match their record (as after "
-        "a git pull): then use useful-views sync --all.")
+        "Report what is missing or out of place, every rule a recipe breaks (refused), and the recipes "
+        "sync would run. Changes nothing. It does not notice changes inside a step's code or to a raw "
+        "file until that recipe runs again, or view files that no longer match their record, as after a "
+        "git pull. For those, use useful-views sync --all.")
 
     p = add("sync", "make the views match the recipe folders, like uv sync",
-            "Make the views and datapackage.json match the recipe folders, like uv sync. Checks every recipe "
-            "first and changes nothing if any would be refused. Then removes the records and view files of "
-            "deleted recipes and outputs, and runs, upstream first, every recipe that is new, changed, "
-            "missing its views or made from older data, then those downstream of them.")
+            "Make the views and datapackage.json match the recipe folders, like uv sync. If any recipe "
+            "would be refused, it changes nothing. Otherwise it removes the records and view files of "
+            "deleted recipes and outputs. Then it runs, upstream first, every recipe that is new, changed, "
+            "missing its views or made from older data, and the recipes downstream of them.")
     p.add_argument("--all", action="store_true",
                    help="run every recipe again, upstream first (sync does not notice edits to a step's code)")
 
@@ -362,8 +364,8 @@ def _dispatch(args: argparse.Namespace, shown: list[str]) -> tuple[int, dict]:
                     print("datapackage.json shows recipes made from older versions of the views they read "
                           "(a recipe ran again, and the recipes that read its views did not):")
                 else:
-                    print("The project is not in sync: recipe folders differ from their records in "
-                          "datapackage.json, or views were made from older data:")
+                    print("The project is not in sync: recipe folders or sources.toml differ from what "
+                          "datapackage.json records, or views were made from older data:")
                 for finding in result.findings:
                     print(f"  {finding.kind}: {finding.message.splitlines()[0]}")
                 if all(syncable(f) for f in result.findings):

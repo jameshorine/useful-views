@@ -51,15 +51,21 @@ def _rebuild(cls: type, message: str) -> UsefulViewsError:
 
 
 class ProjectError(UsefulViewsError):
-    """The project itself is missing or damaged, or a file could not be written."""
+    """A problem with the project or its files.
+
+    For example, the project is missing or damaged, or a file could not be
+    written.
+    """
 
 
 class ProjectNotFound(ProjectError):
-    """No useful-views project was found from the current folder or `root=`."""
+    """No project was found from the current folder or `root=`."""
 
 
 class RecipeRefused(UsefulViewsError):
-    """A recipe was refused because it breaks a rule; nothing on disk changed.
+    """A recipe was refused because it breaks a rule.
+
+    Nothing on disk changed.
 
     Attributes:
         rule: The number of the broken rule (see `useful_views.RULES` or
@@ -69,8 +75,8 @@ class RecipeRefused(UsefulViewsError):
         path: The file to fix, relative to the project root, when there is one.
         recipe: The recipe that was refused.
         refusals: Every refusal found at once. `sync` checks all recipes
-            before changing anything and raises the first, with the rest here;
-            otherwise this is just `[self]`.
+            before changing anything, and raises the first with the rest
+            here. Otherwise this is just `[self]`.
     """
 
     def __init__(self, message: str, *, rule: int | None = None, path: str | None = None,
@@ -99,15 +105,15 @@ class RecipeRefused(UsefulViewsError):
 class StepFailed(UsefulViewsError):
     """A step exited with an error, so nothing was recorded.
 
-    The recipe's views were removed; its work files are kept for inspection.
+    The recipe's views were removed. Its work files are kept for inspection.
 
     Attributes:
         step: The step file, relative to the project root.
-        returncode: The step's exit code; negative when a signal stopped it
-            (on Linux and macOS: -9 is SIGKILL, often from running out of
-            memory).
-        stderr: What the step wrote to its error output: all of it, or its
-            last 64 KB, with a note saying how much came before.
+        returncode: The step's exit code, negative when a signal stopped it.
+            On Linux and macOS, -9 is SIGKILL, often from running out of
+            memory.
+        stderr: The step's error output, or its last 64 KB with a note
+            saying how much came before.
         recipe: The recipe the step belongs to.
     """
 
@@ -124,9 +130,10 @@ class StepFailed(UsefulViewsError):
 
 
 class OutputError(UsefulViewsError):
-    """After the steps ran, a declared output was missing, empty or unreadable.
+    """A declared output was missing, empty or unreadable.
 
-    Nothing was recorded, and the recipe's views were removed.
+    This is checked after the steps ran. Nothing was recorded, and the
+    recipe's views were removed.
 
     Attributes:
         paths: The outputs that were not right.

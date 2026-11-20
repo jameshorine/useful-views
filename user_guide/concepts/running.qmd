@@ -1,0 +1,268 @@
+---
+title: "Run, sync and check"
+---
+
+```{python}
+#| include: false
+# Setup, hidden from readers. Every .qmd page starts with this same cell
+# (tests/test_docs_pages.py checks). It works in a fresh folder, reads the
+# example project from this repository's tests/data (offline), and defines
+# sh(), which runs a command shown on the page and prints its output.
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import warnings
+from pathlib import Path
+
+import useful_views
+
+_mirror = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data"
+if not (_mirror / "examples" / "pwt").is_dir():
+    raise RuntimeError(f"no example data at {_mirror}")
+os.environ["USEFUL_VIEWS_DATA_URL"] = str(_mirror)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+WORK = str(Path(tempfile.mkdtemp(prefix="useful-views-docs-")).resolve())
+os.chdir(WORK)
+warnings.formatwarning = lambda message, category, *args, **kwargs: f"{category.__name__}: {message}\n"
+
+
+def sh(line, expect=0):
+    """Run one command shown on the page (useful-views, cd or cat) and print
+    its output as a terminal would. Fails if it exits with another code."""
+    word, _, rest = line.partition(" ")
+    if word == "cd":
+        os.chdir(shlex.split(rest)[0])
+        return
+    if word == "cat":
+        print(Path(shlex.split(rest)[0]).read_text(encoding="utf-8"), end="")
+        return
+    if word != "useful-views":
+        raise ValueError(f"sh() runs useful-views, cd and cat, not {line!r}")
+    done = subprocess.run(
+        [sys.executable, "-m", "useful_views", *shlex.split(rest)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+    )
+    out = done.stdout.replace(WORK, "/path/to")
+    if out.strip():
+        print(out, end="")
+    if done.returncode != expect:
+        raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
+```
+
+This page shows what `run`, `sync` and `check` do, and what to run after
+you change something. `run` and `sync` differ the way `uv run` and `uv sync`
+do. `run` does the one recipe you name, now. `sync` brings the whole project
+in line with its recipe folders. `check` reports, and changes nothing.
+
+Before you `run` or `sync` a project you didn't write, read
+[Steps are code](steps.md#steps-are-code).
+
+## Make the views
+
+Get the example project, make its views, and check them:
+
+```sh
+useful-views example pwt
+cd pwt-example
+useful-views sync
+useful-views check
+```
+
+```{python}
+#| echo: false
+sh("useful-views example pwt")
+sh("cd pwt-example")
+sh("useful-views sync")
+sh("useful-views check")
+```
+
+`sync` makes the project match its recipe folders, the way `uv sync` makes
+an environment match its lock file. It:
+
+1. checks every recipe against the [rules](../reference/rules.md), judging
+   each against the records as they will be when its turn comes. If any
+   recipe would be refused, it lists every problem and changes nothing. A
+   folder with no `recipe.toml` is skipped, with a warning.
+2. removes the records of deleted recipe folders, and of views a recipe no
+   longer lists, with their files. It warns about recipes that read a
+   removed view.
+3. runs, upstream first, each recipe that has never run, whose
+   `recipe.toml` or steps have changed, whose views are missing, or that
+   read a view made again with different data since. Then it runs every
+   recipe downstream of those.
+
+Records only ever come from real runs. `useful-views sync --all` runs every
+recipe.
+
+### If sync stops
+
+Before it runs anything, `sync` removes the views of each recipe it will run
+after another one it reads from. If a recipe fails, or `sync` is
+interrupted, it stops there:
+
+- the recipes that ran stay recorded;
+- the views it hadn't made again are missing, however it stopped (even if
+  the process was killed), so the next `sync` makes them;
+- the message says what it did, what it didn't reach, and what to run next.
+
+## Check the project
+
+Change the description in `recipes/pwt_panel/recipe.toml`, then check:
+
+```{python}
+#| include: false
+# Change the recipe's description, as you would in an editor. Remember the
+# panel's data hash and when gdp-per-capita.parquet was made, for the
+# asserts after the next sync.
+toml = Path("recipes/pwt_panel/recipe.toml")
+text = toml.read_text(encoding="utf-8")
+assert "Country-year panel of core" in text
+toml.write_text(text.replace("Country-year panel of core", "Country-year panel of the core"), encoding="utf-8")
+panel_hash = useful_views.data_hash("useful-views/pwt-panel.parquet")
+gdp_made = os.stat("useful-views/gdp-per-capita.parquet").st_mtime_ns
+```
+
+```sh
+useful-views check
+```
+
+```{python}
+#| echo: false
+sh("useful-views check", expect=1)
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert {f.recipe: f.reason for f in useful_views.check()} == {"pwt_panel": "changed", "gdp_per_capita": "upstream"}
+```
+
+`check` reports the recipe you changed, and the recipe downstream of it.
+Each finding says what to do about it. `check` works out the same plan as
+`sync`, so a clean `check` means `sync` has nothing to refuse.
+[Check findings](../reference/check-findings.md) lists every kind of
+finding.
+
+`check` exits with 1 when it finds anything, so it works as a gate in
+scripts. In CI, it needs the raw data and a `sync` first. A plain git
+checkout has no raw files or views, so `check` reports them missing there.
+Gate that job with `useful-views cookbook --check` instead
+([Cookbook](cookbook.md#check-it-in-ci)).
+
+Now sync again:
+
+```sh
+useful-views sync
+```
+
+```{python}
+#| echo: false
+sh("useful-views sync")
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert useful_views.data_hash("useful-views/pwt-panel.parquet") == panel_hash
+assert os.stat("useful-views/gdp-per-capita.parquet").st_mtime_ns != gdp_made
+assert useful_views.check() == []
+```
+
+`sync` ran both recipes, though the panel's data came out the same. Data
+that comes out the same doesn't show that the recipes reading it would give
+the same results. A step can see what a data hash leaves out, such as a time
+zone's name or a column's categories. So `sync` never skips a recipe
+downstream of one it runs.
+
+## Run one recipe
+
+```{python}
+#| include: false
+record = Path("datapackage.json").read_bytes()
+catalog = Path("useful-views/README.md").read_bytes()
+```
+
+```sh
+useful-views run pwt_panel
+```
+
+```{python}
+#| echo: false
+sh("useful-views run pwt_panel")
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert Path("datapackage.json").read_bytes() == record
+assert Path("useful-views/README.md").read_bytes() == catalog
+```
+
+`run` warns that `gdp_per_capita` reads the views it just made. The panel
+came out the same, so `datapackage.json` and the catalog are unchanged, byte
+for byte.
+
+`run` checks the recipe against the rules before it changes anything. Then
+it:
+
+1. deletes the recipe's views and empties `work/<recipe>/`, so a leftover
+   file can never pass for a fresh result;
+2. runs each step in order, showing its output as it runs, in a terminal or
+   a notebook cell. The first step that fails stops the run.
+3. checks that every declared view was written as a non-empty parquet file;
+4. records the run in `datapackage.json` and the catalog. Only this
+   recipe's entries change.
+
+If a step fails or a view is missing, nothing is recorded, and the recipe's
+views are removed. Its record from the last successful run is kept, and
+`check` reports the views as missing, or the recipe as never run. The files
+in `work/<recipe>/` stay as the steps left them, so you can see how far the
+run got.
+
+`run` never runs other recipes. If the recipe reads another recipe's view,
+run that recipe before it, or use `sync`, which runs recipes in order. When
+other recipes read the views `run` made, it warns and names them:
+
+- **Different data:** they are out of date. `check` reports them
+  (`input-data-changed`), and `sync` runs them.
+- **The same data:** `sync` doesn't run them. Run them too if you changed
+  how the data is stored, such as a time zone's name, a column's storage
+  type or unit, or its categories. The warning gives the command.
+- **Can't tell:** the records are from before fingerprints, a view has no
+  data hash, or a fingerprint is one this version doesn't understand. `run`
+  says which, and to use `useful-views sync --all`.
+
+Sort the rows of each view before writing it, by columns that together
+identify each row. The same rows in another order have another
+[fingerprint](../guides/fingerprints.qmd), so the recipes downstream would
+look out of date after every run.
+
+## What to run after a change
+
+| When you | Run |
+|---|---|
+| add a recipe or a step, or edit a `recipe.toml` | `useful-views sync` |
+| edit the code inside a step, or a helper module | `useful-views run <recipe>`, then what it says to run next. Or `useful-views sync --all`. |
+| replace a file in `raw/` under the same name | `useful-views sync --all`. Or `run` each recipe that reads it, then what each run says. Or give the new file a new name, and change the path in `inputs` and in the step that reads it. Then `sync` notices. |
+| edit `sources.toml` | `useful-views sync`. It runs no recipe (see [Sources](sources.md)). |
+| `git pull`, merge or switch branches | `useful-views sync --all`. The views aren't in git, so they still come from the recipes as they were. |
+| delete a recipe folder, or remove an output | `useful-views sync`. It removes the old records and view files. First change the inputs of any recipe that reads those views. |
+| rename a recipe folder | Change `work/<old name>/` to `work/<new name>/` in its steps, then `useful-views sync`. |
+| clone the project on another computer | Install the libraries, place the raw files, then `useful-views sync`. |
+| finish a change you will commit | `useful-views sync`, then `useful-views cookbook`, then commit. |
+
+`sync` and `check` don't notice an edit to a step's code or a raw file's
+contents until that recipe runs again, nor old views left by a `git pull`.
+See [Stale views](stale-views.md), and
+[#32](https://github.com/jameshorine/useful-views/issues/32) for the plan.
+
+## One command at a time
+
+`run`, `sync` and `cookbook` (when it writes) take a lock on the project. A
+second one started meanwhile is refused, saying another command is changing
+the project. Wait, then run it again. `check`, `rules` and `cookbook
+--check` don't take the lock. The lock file, `work/.useful-views.lock`, is
+all a refused `run` or `sync` leaves behind. See
+[Environment](../reference/environment.md#stopping-a-command).
