@@ -25,6 +25,24 @@ def test_generated_page_is_up_to_date(name):
     )
 
 
+def test_links_between_guide_pages_point_at_files():
+    """A renamed page (fingerprints.md to fingerprints.qmd) leaves links that
+    the docs build only warns about."""
+    import re
+
+    guide = ROOT / "user_guide"
+    made_by_great_docs = {"skill.md", "llms.txt", "llms-full.txt"}  # at the site's root
+    broken = []
+    for page in sorted(p for p in guide.rglob("*") if p.suffix in (".md", ".qmd")):
+        text = re.sub(r"^```.*?^```", "", page.read_text(encoding="utf-8"), flags=re.S | re.M)
+        for target in re.findall(r"\]\(([^)\s#]+)(?:#[^)\s]*)?\)", text):
+            if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target) or Path(target).name in made_by_great_docs:
+                continue
+            if not (page.parent / target).exists():
+                broken.append(f"{page.relative_to(ROOT).as_posix()}: {target}")
+    assert not broken, "links to files that don't exist:\n" + "\n".join(broken)
+
+
 def test_every_guide_page_is_in_the_sidebar():
     """great-docs.yml lists the user guide's pages (.md, and .qmd for pages
     whose code runs at build time) in order; a page left out would be built

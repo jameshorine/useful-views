@@ -4,29 +4,51 @@ title: "Try it: two fingerprints"
 
 ```{python}
 #| include: false
-# Setup, hidden from readers: work in a fresh folder, read the example
-# project from this repository (offline), and define sh() to show a
-# command's output. Copy this cell to the top of every .qmd page.
+# Setup, hidden from readers. Every .qmd page starts with this same cell
+# (tests/test_docs_pages.py checks). It works in a fresh folder, reads the
+# example project from this repository's tests/data (offline), and defines
+# sh(), which runs a command shown on the page and prints its output.
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 
 import useful_views
 
-_examples = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data" / "examples"
-if _examples.is_dir():
-    os.environ["USEFUL_VIEWS_DATA_URL"] = str(_examples)
-os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1")
-os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"]
-os.chdir(tempfile.mkdtemp(prefix="useful-views-docs-"))
+_mirror = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data"
+if not (_mirror / "examples" / "pwt").is_dir():
+    raise RuntimeError(f"no example data at {_mirror}")
+os.environ["USEFUL_VIEWS_DATA_URL"] = str(_mirror)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+WORK = str(Path(tempfile.mkdtemp(prefix="useful-views-docs-")).resolve())
+os.chdir(WORK)
+warnings.formatwarning = lambda message, category, *args, **kwargs: f"{category.__name__}: {message}\n"
 
 
-def sh(command):
-    """Run a command here and print what it prints, as a terminal would."""
-    done = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    print(done.stdout.rstrip())
+def sh(line, expect=0):
+    """Run one command shown on the page (useful-views, cd or cat) and print
+    its output as a terminal would. Fails if it exits with another code."""
+    word, _, rest = line.partition(" ")
+    if word == "cd":
+        os.chdir(shlex.split(rest)[0])
+        return
+    if word == "cat":
+        print(Path(shlex.split(rest)[0]).read_text(encoding="utf-8"), end="")
+        return
+    if word != "useful-views":
+        raise ValueError(f"sh() runs useful-views, cd and cat, not {line!r}")
+    done = subprocess.run(
+        [sys.executable, "-m", "useful_views", *shlex.split(rest)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+    )
+    out = done.stdout.replace(WORK, "/path/to")
+    if out.strip():
+        print(out, end="")
+    if done.returncode != expect:
+        raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
 ```
 
 [Stale views and fingerprints](../concepts/stale-views.md) explains the two
@@ -99,6 +121,13 @@ print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_p
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet"))
 ```
 
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") != file_hash("readings_pyarrow.parquet")
+assert data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet")
+```
+
 
 The data is identical, but the bytes are not: each library writes its own
 name into the file, and encodes and compresses the columns its own way. A
@@ -112,6 +141,13 @@ matches.
 readings.write_parquet("readings_again.parquet")
 print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_again.parquet"))
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_again.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") == file_hash("readings_again.parquet")
+assert data_hash("readings.parquet") == data_hash("readings_again.parquet")
 ```
 
 
@@ -133,6 +169,13 @@ print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_f
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_fixed.parquet"))
 ```
 
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert file_hash("readings.parquet") != file_hash("readings_fixed.parquet")
+assert data_hash("readings.parquet") != data_hash("readings_fixed.parquet")
+```
+
 
 One value changed, and both fingerprints changed. Either one
 would tell useful-views that a view made from the old readings is now stale.
@@ -142,6 +185,12 @@ would tell useful-views that a view made from the old readings is now stale.
 ```{python}
 fixed.reverse().write_parquet("readings_reversed.parquet")
 print("data hash equal:", data_hash("readings_fixed.parquet") == data_hash("readings_reversed.parquet"))
+```
+
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert data_hash("readings_fixed.parquet") != data_hash("readings_reversed.parquet")
 ```
 
 
@@ -165,6 +214,13 @@ pl.DataFrame({"total": [second]}).write_parquet("total_b.parquet")
 print("data hash equal:", data_hash("total_a.parquet") == data_hash("total_b.parquet"))
 ```
 
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true.
+assert (str(first), str(second)) == ("0.6000000000000001", "0.6")
+assert data_hash("total_a.parquet") != data_hash("total_b.parquet")
+```
+
 
 Shown to a few decimal places, both are 0.6. Fingerprints are exact, so they
 count the difference in the 16th digit. That is honest: the two results are
@@ -185,6 +241,15 @@ print(uvs.data_hash("readings.parquet"))
 print(uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet"))
 ```
 
+```{python}
+#| include: false
+# What the text says; the build fails if it stops being true. The same hash
+# is pinned in tests/test_data_hash.py.
+assert uvs.data_hash("readings.parquet") == (
+    "datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18"
+)
+assert uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet")
+```
 
 Your first line should match this one character for character. The data
 hash depends only on the readings, so it is the same on every computer,

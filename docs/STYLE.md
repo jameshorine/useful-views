@@ -72,9 +72,17 @@ Planned work lives in GitHub issues, not in the docs. Link the issue.
 - Show real output. Pages with output are `.qmd` files. Quarto runs their
   code when the site is built, so the output is always current.
 - Start each `.qmd` page with the hidden setup cell from an existing page.
-  It works offline from `tests/data/examples` in a fresh temporary folder.
+  It reads the example project from `tests/data` (offline) and works in a
+  fresh temporary folder.
 - Show a command in an `sh` block. Put a cell with `#| echo: false` after it
-  that runs the command with `sh()` and prints what it printed.
+  that runs the same command with `sh()`. `sh()` runs `useful-views`, `cd`
+  and `cat`, and fails if a command exits with an unexpected code: pass
+  `expect=1` for `check` with findings, or `expect=3` for a refusal.
+- Never print a `Path`: it shows the temporary folder. `sh()` replaces that
+  folder with `/path/to`.
+- When the prose says what the output shows, add a hidden cell
+  (`#| include: false`) that asserts it, so the build fails if it stops
+  being true.
 - `tests/test_docs_pages.py` runs every `.qmd` page's cells, so a broken
   example fails the tests before it fails the docs build.
 - Write a docstring example as a doctest (`>>>` and the output) inside a
