@@ -160,26 +160,36 @@ def _read(source: str | Path, rel: str) -> tuple[str, bytes]:
 def example(name: str, path: str | Path | None = None) -> Path:
     """Download a ready-to-run example project.
 
-    The example's raw data and recipes come from the useful-views-data
-    repository, at the version this release of useful-views pins, and each
-    file is checked against its SHA-256 before anything is written. The
-    folder is then set up like `init` does. Make its views with
-    `useful-views sync`.
+    Command line: `useful-views example NAME [PATH]`.
+
+    The raw data and recipes come from the useful-views-data repository, at
+    the version this release of useful-views pins. Each file is checked
+    against its SHA-256 before anything is written. Then the folder is set
+    up as `init` does. Make its views with `useful-views sync`.
 
     Args:
-        name: The example, such as `"pwt"` (Penn World Table extract).
-        path: The folder to create; default `"<name>-example"`. It must not
-            exist, or be empty.
+        name: The example, such as `"pwt"`, a Penn World Table extract.
+        path: The folder to create. It must be new or empty. Default:
+            `"<name>-example"`.
 
     Returns:
         The project folder, as an absolute path.
 
     Raises:
-        ExampleError: The name is unknown, the folder is not empty (or is
-            your home folder or the top of a drive), a file could not be
-            downloaded, or a checksum did not match. Nothing is written in
-            those cases.
+        ExampleError: Nothing was written, because the name is unknown, the
+            folder is not empty (or is your home folder or the top of a
+            drive), a file could not be downloaded, or a checksum did not
+            match.
         ProjectError: The folder is inside another project.
+
+    Examples:
+        ```python
+        >>> project = uvs.example("pwt")
+        >>> project.name
+        'pwt-example'
+        >>> uvs.sync(root=project).ran
+        ('pwt_panel', 'gdp_per_capita')
+        ```
     """
     if name not in EXAMPLES:
         listing = "; ".join(f"{n}: {e['description']}" for n, e in EXAMPLES.items())

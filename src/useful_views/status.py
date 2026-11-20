@@ -56,24 +56,42 @@ class Finding:
     """One problem `check` found.
 
     Attributes:
-        kind: What kind of problem: one of "unreadable-recipe",
-            "unreadable-sources", "refused", "missing-input", "never-run",
-            "out-of-date", "missing-recipe-folder", "missing-view",
-            "stale-sources", "stale-cookbook", "stale-catalog" or "stray-file".
-            The check findings reference lists what each means.
+        kind: The kind of problem: "unreadable-recipe", "unreadable-sources",
+            "refused", "missing-input", "never-run", "out-of-date",
+            "missing-recipe-folder", "missing-view", "stale-sources",
+            "stale-cookbook", "stale-catalog" or "stray-file". The check
+            findings reference says what each means.
         path: The file or folder concerned, relative to the project root.
-        message: What is wrong and what to do about it.
-        rule: For `refused`, the number of the broken rule; otherwise None.
+        message: What is wrong, and what to do about it.
+        rule: For `refused`, the number of the broken rule. Otherwise None.
         recipe: The recipe concerned, when there is one.
-        reason: For `out-of-date`, why: "changed" (its recipe.toml or steps
-            no longer match its record), "outputs-changed" (it no longer
-            declares any view it made), "outputs-dropped" (it no longer
-            declares some of them; sync removes them without running it),
-            "input-data-changed" (a view it reads was made again with
-            different data since it ran: its recorded fingerprint no longer
-            matches) or "upstream" (a view it reads will be made again). For
-            `missing-input`, "made-by-recipe" when the input is a view
-            another recipe makes, which sync makes first. Otherwise None.
+        reason: Why, for two kinds. Otherwise None.
+
+            For `out-of-date`:
+
+            - "changed": its recipe.toml or steps no longer match its record;
+            - "outputs-changed": it no longer declares any view it made;
+            - "outputs-dropped": it no longer declares some of them, and sync
+              removes them without running it;
+            - "input-data-changed": a view it reads was made again with
+              different data since it ran, so its recorded fingerprint no
+              longer matches;
+            - "upstream": a view it reads will be made again.
+
+            For `missing-input`, "made-by-recipe": the input is a view another
+            recipe makes, which sync makes first.
+
+    Examples:
+        ```python
+        >>> import os
+        >>> os.remove("useful-views/gdp-per-capita.parquet")
+        >>> finding = uvs.check()[0]
+        >>> finding.kind, finding.recipe
+        ('missing-view', 'gdp_per_capita')
+        >>> print(finding.message)
+        useful-views/gdp-per-capita.parquet is recorded as made by recipes/gdp_per_capita
+        but the file is missing. Make it again with: useful-views sync
+        ```
     """
 
     kind: str
@@ -94,20 +112,40 @@ class Finding:
 def check(*, root: str | Path | None = None) -> list[Finding]:
     """Report the state of the project, without changing anything.
 
-    Reports what is missing or out of place, every rule a recipe breaks that
-    would stop `run` or `sync` (`refused`), and recipes that `sync` would run
-    (`never-run`, `out-of-date`, `missing-view`). It does not notice changes
-    inside a step's code or to a raw file until that recipe runs again, nor
-    view files on disk that no longer match their record (as after a
-    `git pull`).
+    Command line: `useful-views check`.
+
+    `check` reports:
+
+    - what is missing or out of place;
+    - every rule a recipe breaks that would stop `run` or `sync` (`refused`);
+    - recipes that `sync` would run (`never-run`, `out-of-date`,
+      `missing-view`).
+
+    It does not notice changes inside a step's code or to a raw file until
+    that recipe runs again. Nor does it notice view files on disk that no
+    longer match their record, as after a `git pull`. For those, use
+    `useful-views sync --all`.
 
     Args:
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
 
     Returns:
-        A list of `Finding`s in a fixed order; empty when there is nothing to
-        report.
+        A list of `Finding`s, in a fixed order. It is empty when there is
+        nothing to report.
+
+    Raises:
+        ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> uvs.check()
+        []
+        >>> import os
+        >>> os.remove("useful-views/gdp-per-capita.parquet")
+        >>> [finding.kind for finding in uvs.check()]
+        ['missing-view']
+        ```
     """
     project = find_root(root)
     data = load_datapackage(project)

@@ -73,17 +73,29 @@ def find_root(root: str | Path | None = None) -> Path:
 def root() -> Path:
     """The project folder, found from the current folder.
 
-    Walks up from the current folder to the nearest `datapackage.json` that
-    useful-views wrote, so it works from a notebook in `notebooks/`. Use it
-    to build paths to views and read them with any library:
+    Command line: none.
 
-        gdp = pl.read_parquet(uvs.root() / "useful-views" / "gdp-per-capita.parquet")
+    `root` walks up from the current folder to the nearest `datapackage.json`
+    that useful-views wrote, so it works from a notebook in `notebooks/`. Use
+    it to build paths to views, and read them with any library.
 
     Returns:
         The project folder, as an absolute path.
 
     Raises:
         ProjectNotFound: The current folder is not inside a project.
+
+    Examples:
+        ```python
+        >>> import os
+        >>> os.mkdir("notebooks")
+        >>> os.chdir("notebooks")
+        >>> uvs.root().name
+        'pwt-example'
+        >>> import polars as pl
+        >>> pl.read_parquet(uvs.root() / "useful-views" / "gdp-per-capita.parquet").shape
+        (296, 6)
+        ```
     """
     return find_root()
 
@@ -146,27 +158,41 @@ def too_broad(folder: Path) -> str | None:
 def init(path: str | Path = ".", *, force: bool = False) -> Path:
     """Create the project structure at `path`.
 
-    Creates `raw/`, `recipes/`, `work/` and `useful-views/`, a starter
-    `README.md`, an `AGENTS.md` with instructions for AI coding assistants, a
-    `.gitignore` that keeps raw data, work files and views out of git, and an
-    empty `datapackage.json` and catalog. Safe to run twice: it never
-    overwrites a file. If a `.gitignore` is already there, it warns when raw
-    data, work files or views would not be ignored (asking git, inside a git
-    repository), naming the lines to add.
+    Command line: `useful-views init [PATH] [--force]`.
+
+    `init` creates:
+
+    - `raw/`, `recipes/`, `work/` and `useful-views/`;
+    - a starter `README.md`;
+    - `AGENTS.md`, with instructions for AI coding assistants;
+    - a `.gitignore` that keeps raw data, work files and views out of git;
+    - an empty `datapackage.json` and catalog (`useful-views/README.md`).
+
+    It never overwrites a file, so it is safe to run twice. If a `.gitignore`
+    is already there, `init` warns when raw data, work files or views would
+    not be ignored, and names the lines to add. Inside a git repository, it
+    asks git.
 
     Args:
-        path: The project folder. Created, with its parents, if missing.
-        force: Create the project even in your home folder or at the top of a
-            drive, which init otherwise refuses: every folder below would then
-            be inside the project.
+        path: The project folder. It is created, with its parents, if missing.
+        force: Allow your home folder or the top of a drive. `init` refuses
+            them otherwise, because every folder below would be inside the
+            project.
 
     Returns:
         The project folder, as an absolute path.
 
     Raises:
-        ProjectError: `path` is inside another project, is a file, holds a
-            `datapackage.json` that useful-views did not write, or is your home
-            folder or the top of a drive (without `force`).
+        ProjectError: `path` is a file, is inside another project, or holds a
+            `datapackage.json` that useful-views did not write. Also raised
+            for your home folder or the top of a drive, without `force`.
+
+    Examples:
+        ```python
+        >>> project = uvs.init("my-project")
+        >>> sorted(path.name for path in project.iterdir())
+        ['.gitignore', 'AGENTS.md', 'README.md', 'datapackage.json', 'raw', 'recipes', 'useful-views', 'work']
+        ```
     """
     folder = Path(path).expanduser().resolve()
     why = too_broad(folder)

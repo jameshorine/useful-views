@@ -58,9 +58,9 @@ class DataHashError(UsefulViewsError):
 
     Attributes:
         path: The file.
-        column: The column whose type the rules do not cover (a list, struct
-            or map in a cell, for example), or None otherwise: the file could
-            not be read, or the computer is not little-endian.
+        column: The column whose type the rules do not cover, such as a list,
+            struct or map in each cell. None when the file could not be read,
+            or the computer is not little-endian.
 
     Added in version 0.2.0.
     """
@@ -115,12 +115,15 @@ def _is(t: pa.DataType, test: str) -> bool:
 
 
 def data_hash(path: str | os.PathLike) -> str:
-    """The data hash of a parquet file: a fingerprint of the table it holds.
+    """A fingerprint of the table in a parquet file.
 
-    Two files that hold the same table, column for column and row for row,
-    have the same data hash, whichever library wrote them. The rules are set
-    out in the documentation's "Data hash rules" page:
-    https://jameshorine.github.io/useful-views/user-guide/reference/data-hash.html
+    Command line: none.
+
+    This fingerprint is the file's data hash. Two files that hold the same
+    table, column for column and row for row, have the same data hash,
+    whichever library wrote them. The rules are on the
+    [Data hash rules](https://jameshorine.github.io/useful-views/user-guide/reference/data-hash.html)
+    page.
 
     A relative path starts from the current folder. From a notebook in a
     subfolder of the project, start from `uvs.root()`.
@@ -139,8 +142,6 @@ def data_hash(path: str | os.PathLike) -> str:
             cell.
 
     Examples:
-        In the pwt example, after `useful-views sync`:
-
         ```python
         >>> uvs.data_hash("useful-views/gdp-per-capita.parquet")
         'datahash1:sha256:69378218dc105ea3cc282fc234f9e6646592d4877692a013eb0cf67305e5cfe1'

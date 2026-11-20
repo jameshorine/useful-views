@@ -40,7 +40,7 @@ def _out_of_record(finding) -> bool:
 
 
 class CookbookError(UsefulViewsError):
-    """The cookbook cannot be written because the project is not in sync.
+    """The project is out of sync, so `cookbook` wrote nothing.
 
     Attributes:
         findings: The `check` findings that must be resolved first.
@@ -63,12 +63,12 @@ class CookbookResult:
     Attributes:
         path: The cookbook file, `cookbook.json` at the project root.
         written: True if the file was created or changed.
-        up_to_date: True if the file on disk matches the project's recipes
-            (after writing, always True; with `check=True`, the answer).
+        up_to_date: True if the file on disk matches the project's recipes.
+            Always True after writing. With `check=True`, the answer.
         recipes: The recipes in the cookbook, in run order.
         findings: With `check=True`, the `check` findings that mean the
-            recorded recipes no longer match the recipe folders (so the
-            cookbook cannot be up to date); otherwise empty.
+            recorded recipes no longer match the recipe folders, so the
+            cookbook cannot be up to date. Otherwise empty.
     """
 
     path: Path
@@ -154,36 +154,48 @@ def stale_warning(project: Path) -> str | None:
 def cookbook(*, root: str | Path | None = None, check: bool = False) -> CookbookResult:
     """Write `cookbook.json`, the ledger of the recipes the project uses.
 
-    The cookbook lists every recorded recipe, in run order (upstream first),
-    with its description, inputs, outputs and steps, and the raw inputs the
-    recipes read. It is generated from the record in `datapackage.json`, so
-    to write it the project must be in sync: if `check` finds anything other
-    than stray files or a stale catalog or cookbook, nothing is written.
-    Writing an unchanged cookbook leaves the file untouched. Commit it to
-    git, like a lock file.
+    Command line: `useful-views cookbook [--check]`.
 
-    `check=True` needs no data: it works on a fresh clone or in CI, where
-    raw/ and the views are not present. It compares `cookbook.json` with the
-    committed `datapackage.json`, and also reports recipes whose folder no
-    longer matches their record (edited, added or removed without a sync),
-    and recipes made from an older version of a view they read
+    The cookbook lists every recorded recipe in run order (upstream first),
+    with its description, inputs, outputs and steps. It also lists the raw
+    inputs the recipes read. Commit it to git, like a lock file.
+
+    It is made from the records in `datapackage.json`, so the project must be
+    in sync. If `check` finds anything other than stray files or a stale
+    catalog or cookbook, nothing is written. If nothing changed, the file is
+    left untouched.
+
+    `check=True` needs no data, so it works on a fresh clone or in CI, without
+    raw/ or the views. It compares `cookbook.json` with the committed
+    `datapackage.json`. It also reports recipes whose folder no longer
+    matches their record (edited, added or removed without a sync), and
+    recipes made from an older version of a view they read
     (`input-data-changed`).
 
     Args:
-        root: The project folder. By default it is found by walking up from
-            the current folder to `datapackage.json`.
-        check: Do not write; report whether `cookbook.json` matches the
-            project's recipes. Use it in CI.
+        root: The project folder. Default: found from the current folder,
+            like `root()`.
+        check: Report whether `cookbook.json` matches the project's recipes,
+            without writing. Use it in CI.
 
     Returns:
         A `CookbookResult`. With `check=True`, its `up_to_date` is the
         answer, and its `findings` list recipes whose record is out of date.
 
     Raises:
-        CookbookError: When writing, the project is not in sync; its
+        CookbookError: When writing, the project is not in sync. Its
             `findings` say why.
-        ProjectError: cookbook.json exists but cannot be read.
+        ProjectError: `cookbook.json` exists but cannot be read.
         ProjectNotFound: No project was found.
+
+    Examples:
+        ```python
+        >>> result = uvs.cookbook()
+        >>> result.written, result.recipes
+        (True, ('pwt_panel', 'gdp_per_capita'))
+        >>> uvs.cookbook(check=True).up_to_date
+        True
+        ```
     """
     from .status import check as check_project, syncable
 
