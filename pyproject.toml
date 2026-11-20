@@ -1,6 +1,6 @@
 [project]
 name = "useful-views"
-version = "0.2.0"
+version = "0.3.0"
 description = "A framework and data project structure in which every derived table records the recipe that made it."
 readme = "README.md"
 license = "MIT"
