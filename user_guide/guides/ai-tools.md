@@ -3,118 +3,169 @@ title: "Working with AI tools"
 ---
 
 useful-views is built to be driven by an AI coding assistant as well as by a
-person: plain files, rules checked before anything changes, messages that
-name the file to fix, and machine-readable output. This page is for the
-assistant, or for you when you instruct one.
+person. Its files are plain, its rules are checked before anything changes,
+its messages name the file to fix, and its output can be read by a program.
+This page is for the assistant, or for you when you instruct one.
 
 ## Instructions in every project
 
-`useful-views init` writes an `AGENTS.md` into each new project: a short set
-of instructions that many coding assistants read by themselves when they open
-a folder. It is yours to edit, and `init` never overwrites it. Claude Code
-reads `CLAUDE.md` instead; a `CLAUDE.md` containing the line `@AGENTS.md`
-makes it read the same instructions.
+`useful-views init` writes an `AGENTS.md` into each new project. It is a
+short set of instructions that many coding assistants read by themselves
+when they open a folder. It is yours to edit, and `init` never overwrites
+it. Claude Code reads `CLAUDE.md` instead. A `CLAUDE.md` containing the line
+`@AGENTS.md` makes it read the same instructions.
 
-## Steps are code
-
-`useful-views run` and `useful-views sync` execute every step in `recipes/`
-as an ordinary Python program, with your permissions, your environment
-variables (including any passwords or tokens in them) and your network
-access. There is no sandbox. An assistant should read the recipes, and ask
-you, before running `run` or `sync` in a project or on changes it did not
-write: a cloned repository, a pull request, a downloaded project.
-
-These never run a step: `check`, `rules` and `cookbook --check`, which only
-read files, and `cookbook`, which writes only `cookbook.json`.
+`run` and `sync` run the project's steps as you. Before an assistant runs
+them on changes it didn't write, such as a cloned repository, a pull request
+or a downloaded project, it should read the recipes and ask you. See
+[Steps are code](../concepts/steps.md#steps-are-code).
 
 ## What to tell an assistant
 
 - Read the project's `README.md`, `recipes/*/recipe.toml` and the catalog
-  `useful-views/README.md` first. Never edit `datapackage.json`,
-  `useful-views/README.md` or `cookbook.json`; useful-views writes them. Never
-  put files in `raw/` or `useful-views/` by hand.
-- Start with `useful-views rules` and `useful-views check --json`. `check`
-  lists every problem, including every rule `run` or `sync` would refuse, and
-  every recipe `sync` would run, with the reason.
-- To add a recipe: `useful-views new-recipe <name>`, then fill in its
-  `recipe.toml` and replace the stub step. Paths are the same strings in
-  `recipe.toml` and in the step's code, relative to the project root, with
-  forward slashes, and with no wildcards.
-- `recipe.toml` lists every step file (`NN_name.py`) in a `[[steps]]` block
-  at the end of the file, in numeric order: `file` is the file's name (not
-  a path), and `description` is one sentence saying what the step does to
-  the data. When you add, rename or remove a step file, change its block
-  too. Comments in a step file are not read. Save `recipe.toml` and every
-  step file as UTF-8; a step file in another encoding is refused (rule 2).
-- To build: `useful-views sync`. It refuses before changing anything if any
-  recipe breaks a rule, and lists every problem at once.
-- After editing the code inside a step of recipe X, run
-  `useful-views run X`, then what its warnings say to run: `useful-views
-  sync` when X's data changed, the recipes it names when the data came out
-  the same, `useful-views sync --all` when it cannot tell. After a `git pull` or a branch switch, or after
-  replacing a raw file under the same name, `sync` alone does not notice:
-  use `useful-views sync --all`.
-- After `run <recipe>`, if its views came out different, the recipes that
-  read them are out of date: `run` warns and names them, `check` reports
-  them (`out-of-date`, reason `input-data-changed`), and `sync` runs them
-  (prefer it to running each). If they came out the same, `run` still names
-  them, and `sync` does not run them: run each of them if what changed is
-  how the data is stored.
+  `useful-views/README.md` first.
+- Never edit `datapackage.json`, `useful-views/README.md` or
+  `cookbook.json`. useful-views writes them. Never put files in `raw/` or
+  `useful-views/` by hand.
+- Start with `useful-views rules` and `useful-views check --json`. Neither
+  runs a step. `check` lists every problem, including every rule `run` or
+  `sync` would refuse, and every recipe `sync` would run, with the reason.
+- To add a recipe, run `useful-views new-recipe <name>`. Then fill in its
+  `recipe.toml` and replace the stub step. [Recipes](../concepts/recipes.md)
+  covers `recipe.toml`, its `[[steps]]` blocks and its paths, and
+  [Steps](../concepts/steps.md) covers step files.
+- To build, run `useful-views sync`. It refuses before changing anything if
+  any recipe breaks a rule, and lists every problem at once.
+- After editing the code of a step, run its recipe with `useful-views run`,
+  then what the warnings say to run. After a `git pull`, a branch switch,
+  or a raw file replaced under the same name, run `useful-views sync --all`.
+  See [What to run after a change](../concepts/running.qmd#what-to-run-after-a-change).
 - Run one command at a time. A second `run`, `sync` or `cookbook` started
   while another is working on the same project is refused ("another
-  useful-views command is already changing this project"); wait, then run
-  it again.
-- After a sync, update the ledger: `useful-views cookbook`. In CI,
-  `useful-views cookbook --check` checks it without needing the data; see
-  [Cookbook](../concepts/cookbook.md).
+  useful-views command is already changing this project"). Wait, then run it
+  again.
+- After a sync, update the ledger with `useful-views cookbook`. In CI,
+  `useful-views cookbook --check` checks it without the data (see
+  [Cookbook](../concepts/cookbook.md)).
 
 ## Machine-readable output
 
 Every command takes `--json`, including `--help` and `--version`. Standard
-output then carries exactly one JSON document, on success and on failure;
-everything else, including the steps' own output, goes to standard error.
+output then carries exactly one JSON document, on success and on failure.
+Everything else, including the steps' own output, goes to standard error.
+
 Every document has `ok` and a `warnings` list. Read `warnings` even when
-`ok` is true: a note there can matter (a recipe `check` cannot judge, say),
-and most end with the command to run.
+`ok` is true. A note there can matter, such as a recipe `check` can't
+judge, and most end with the command to run.
+
+In the example project, after a change to `recipes/pwt_panel/recipe.toml`
+(messages shortened):
 
 ```sh
 useful-views check --json
-# {"ok": false, "findings": [
-#   {"kind": "out-of-date", "path": "recipes/a", "message": ..., "rule": null, "recipe": "a", "reason": "changed"},
-#   {"kind": "out-of-date", "path": "recipes/b", "message": ..., "rule": null, "recipe": "b", "reason": "upstream"}],
-#  "warnings": []}
-
-useful-views sync --json
-# {"ok": true, "removed": [], "dropped": [], "deleted": [], "ran": ["a", "b"],
-#  "reasons": {"a": "changed", "b": "upstream"}, "warnings": []}
-
-useful-views run pwt_panel --json
-# on failure:
-# {"ok": false, "error": {"type": "StepFailed", "message": ..., "recipe": "pwt_panel",
-#   "sync_result": null, "step": ..., "returncode": 1, "stderr": ...}, "warnings": []}
 ```
 
-Every `error` has `type`, `message`, `recipe` and `sync_result` (what `sync`
-had done before it stopped, or `null`), plus facts for its type:
-`RecipeRefused` has `rule`, `rule_title`, `path` and `refusals`;
-`StepFailed` has `step`, `returncode` and `stderr` (at most its last 64 KB);
-`OutputError` has `paths` and `problems`; `CookbookError` has `findings`;
-`ExampleError` has `kind`.
+```json
+{
+  "ok": false,
+  "findings": [
+    {
+      "kind": "out-of-date",
+      "path": "recipes/gdp_per_capita",
+      "message": "recipes/gdp_per_capita is out of date: ... Bring it up to date with: useful-views sync",
+      "rule": null,
+      "recipe": "gdp_per_capita",
+      "reason": "upstream"
+    },
+    {
+      "kind": "out-of-date",
+      "path": "recipes/pwt_panel",
+      "message": "recipes/pwt_panel is out of date: ... Bring it up to date with: useful-views sync",
+      "rule": null,
+      "recipe": "pwt_panel",
+      "reason": "changed"
+    }
+  ],
+  "warnings": []
+}
+```
 
-| Exit code | Meaning |
+[Check findings](../reference/check-findings.md) lists every `kind` and
+`reason`. Then:
+
+```sh
+useful-views sync --json
+```
+
+```json
+{
+  "ok": true,
+  "removed": [],
+  "dropped": [],
+  "deleted": [],
+  "ran": [
+    "pwt_panel",
+    "gdp_per_capita"
+  ],
+  "reasons": {
+    "pwt_panel": "changed",
+    "gdp_per_capita": "upstream"
+  },
+  "warnings": []
+}
+```
+
+`reasons` says why each recipe ran: `never-run`, `changed`,
+`outputs-changed`, `views-missing`, `input-data-changed`, `upstream` or
+`all`.
+
+On failure, `ok` is false and `error` says what went wrong. Here a step of
+`pwt_panel` fails (`message` and `stderr` are shortened):
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "StepFailed",
+    "message": "Step recipes/pwt_panel/02_keep_core_variables.py failed ...",
+    "recipe": "pwt_panel",
+    "sync_result": null,
+    "step": "recipes/pwt_panel/02_keep_core_variables.py",
+    "returncode": 1,
+    "stderr": "Traceback (most recent call last): ..."
+  },
+  "warnings": []
+}
+```
+
+Every `error` has `type`, `message`, `recipe` and `sync_result`, which is
+what `sync` had done before it stopped, or `null`. Some types add facts:
+
+| Type | Adds |
 |---|---|
-| 0 | success |
-| 1 | `check` found problems, or `cookbook --check` found the cookbook out of date |
-| 2 | usage error: unknown command or option, or a bad `-C` path |
-| 3 | refused or failed: the message says what to fix, and in which file |
-| 130 | interrupted (Ctrl-C) |
-| 143 | terminated (SIGTERM, from a CI cancel or a tool's time limit); 129 for SIGHUP, 149 for Ctrl-Break on Windows |
+| `RecipeRefused` | `rule`, `rule_title`, `path` and `refusals` |
+| `StepFailed` | `step`, `returncode` and `stderr` (at most its last 64 KB) |
+| `OutputError` | `paths` and `problems` |
+| `CookbookError` | `findings` |
+| `ExampleError` | `kind` |
 
-`-C <path>` runs a command in another folder, like `git -C`, so an assistant
-whose working directory resets between commands does not need `cd`.
-
-From Python, every exception carries the same facts as attributes and
+From Python, every exception carries the same facts, as attributes and in
 `to_dict()`.
+
+With `cookbook --check --json`, `ok` is the answer. `findings` lists what
+is out of step, as the same objects `check` gives: recipe folders that no
+longer match their records, and recipes made from an older version of a
+view they read. It is empty when the only problem is that `cookbook.json`
+is missing or differs, so test `ok`. When `cookbook` (without `--check`)
+refuses to write, it exits with 3, and its findings are in
+`error.findings`.
+
+The exit codes are in the
+[command-line reference](../reference/cli.md#exit-codes).
+
+`-C <path>` runs a command in another folder, like `git -C`, so an
+assistant whose working directory resets between commands doesn't need
+`cd`.
 
 ## For the assistant's own context
 

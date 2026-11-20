@@ -51,16 +51,23 @@ def sh(line, expect=0):
         raise RuntimeError(f"{line!r} exited with {done.returncode}, not {expect}:\n{out}")
 ```
 
-[Stale views and fingerprints](../concepts/stale-views.md) explains the two
-fingerprints a view can have: a **file hash** and a **data hash**.
-useful-views records the data hash of every view it makes; the file hash
-is planned. This guide computes both by hand, in a few lines
-of Python, so you can see for yourself what each one notices and why one
-alone is not enough. At the end, you check the result against useful-views'
-own data hash.
+A view can have two fingerprints, a **file hash** and a **data hash**. This
+page computes both by hand, in a few lines of Python, to show what each one
+notices. At the end, you compare your result with useful-views' own data
+hash.
+
+| Fingerprint | Computed from | Answers |
+|---|---|---|
+| **File hash** | the file's bytes | Is this the very file that was recorded? |
+| **Data hash** | the column names and types, and the values, in a fixed form | Does this view hold the same data as the recorded one, whoever made it? |
+
+useful-views records the data hash of every view it makes. The file hash is
+planned ([#32](https://github.com/jameshorine/useful-views/issues/32)).
+[Stale views](../concepts/stale-views.md) explains what fingerprints are
+for.
 
 You need polars and pyarrow, which the [quickstart](../quickstart.md) setup
-installs. Work in a new, empty folder, and run each block in order, in one
+installs. Work in a new, empty folder. Run each block in order, in one
 Python session or notebook.
 
 ## Two fingerprints
@@ -93,13 +100,13 @@ def data_hash(path):
     return h.hexdigest()
 ```
 
-`data_hash` reads the whole table and goes value by value, which is fine for
-a small example. A real one works a column at a time and is much faster.
+This `data_hash` reads the whole table, value by value. That is fine for a
+small example. A real one works a column at a time, and is much faster.
 
 ## The readings
 
 Temperatures from two field sensors. One reading, station B at 06:00, was
-recorded in degrees Fahrenheit by mistake: 56.8 °F is 13.8 °C.
+recorded in degrees Fahrenheit by mistake. 56.8 °F is 13.8 °C.
 
 ```{python}
 readings = pl.DataFrame({
@@ -129,11 +136,11 @@ assert data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet")
 ```
 
 
-The data is identical, but the bytes are not: each library writes its own
-name into the file, and encodes and compresses the columns its own way. A
-library upgrade can do the same. So a file hash recorded on your computer
-can differ from a co-author's for the very same results, while the data hash
-matches.
+The data is the same, and the bytes differ. Each library writes its own name
+into the file, and encodes and compresses the columns its own way. A library
+upgrade can do the same. So the file hash alone is not enough. A file hash
+recorded on your computer can differ from a co-author's for the very same
+results, while the data hash matches.
 
 ## 2. The same library, saved twice
 
@@ -151,8 +158,8 @@ assert data_hash("readings.parquet") == data_hash("readings_again.parquet")
 ```
 
 
-On one computer, with the same library, the file hash is reliable, and it is
-much cheaper: it needs no understanding of the file at all. That makes it the
+On one computer, with the same library, the file hash is reliable. It is also
+much cheaper, since it needs no understanding of the file. That makes it the
 right check for "is this still the file that was recorded?"
 
 ## 3. A real change: fixing the unit error
@@ -177,8 +184,8 @@ assert data_hash("readings.parquet") != data_hash("readings_fixed.parquet")
 ```
 
 
-One value changed, and both fingerprints changed. Either one
-would tell useful-views that a view made from the old readings is now stale.
+One value changed, and both fingerprints changed. Either one would tell
+useful-views that a view made from the old readings is now stale.
 
 ## 4. The same rows, in another order
 
@@ -194,10 +201,10 @@ assert data_hash("readings_fixed.parquet") != data_hash("readings_reversed.parqu
 ```
 
 
-Same rows, other order, different data hash. Many operations return rows in
-an order that can change from one run to the next, such as `group_by` in
-polars (unless you pass `maintain_order=True`) and some joins. A step that
-sorts its result before writing it, for example with
+The same rows in another order give another data hash. Many operations
+return rows in an order that can change from one run to the next, such as
+`group_by` in polars (unless you pass `maintain_order=True`) and some joins.
+A step that sorts its result before writing it, for example with
 `.sort("station", "time")`, gives the same fingerprint every time.
 
 ## 5. The last digit of a number
@@ -223,15 +230,15 @@ assert data_hash("total_a.parquet") != data_hash("total_b.parquet")
 
 
 Shown to a few decimal places, both are 0.6. Fingerprints are exact, so they
-count the difference in the 16th digit. That is honest: the two results are
-not identical. Deciding that two numbers are close enough is a comparison
-with a tolerance, which is a separate question from whether anything changed.
+count the difference in the 16th digit. The two results really do differ.
+Whether two numbers are close enough is a comparison with a tolerance. That
+is a separate question from whether anything changed.
 
 ## 6. useful-views' own data hash
 
 The `data_hash` above is a sketch. useful-views has the real one,
 `uvs.data_hash()`. It follows exact, versioned
-[rules](../reference/data-hash.md), and it reads a large file a column at a
+[rules](../reference/data-hash.md), and reads a large file a column at a
 time:
 
 ```{python}
@@ -265,8 +272,7 @@ whichever library wrote the file.
 | the same rows in another order | changes | changes |
 | a number differs in its last digit | changes | changes |
 
-The two answer different questions. The file hash asks "is this the file
-that was recorded?", and is the cheap, exact check on one computer. The data
-hash asks "is this the same data?", and is the one that works across
-computers, co-authors and library versions. The data hash is what
-useful-views' [stale-view checks](../concepts/stale-views.md) are built on.
+The file hash is the cheap, exact check on one computer. The data hash is
+the one a co-author, a reviewer or a CI job can compare, across computers
+and library versions. useful-views' [stale-view
+checks](../concepts/stale-views.md) are built on the data hash.
