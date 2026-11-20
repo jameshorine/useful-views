@@ -54,7 +54,7 @@ user_guide:
       - concepts/sources.md
   - section: Keeping views current
     contents:
-      - concepts/running.md
+      - concepts/running.qmd
       - concepts/stale-views.md
       - guides/fingerprints.qmd
   - section: Records
