@@ -2,6 +2,33 @@
 title: "Try it: two fingerprints"
 ---
 
+```{python}
+#| include: false
+# Setup, hidden from readers: work in a fresh folder, read the example
+# project from this repository (offline), and define sh() to show a
+# command's output. Copy this cell to the top of every .qmd page.
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import useful_views
+
+_examples = Path(useful_views.__file__).resolve().parents[2] / "tests" / "data" / "examples"
+if _examples.is_dir():
+    os.environ["USEFUL_VIEWS_DATA_URL"] = str(_examples)
+os.environ.update(NO_COLOR="1", PYTHON_COLORS="0", COLUMNS="100", PYTHONUNBUFFERED="1")
+os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"]
+os.chdir(tempfile.mkdtemp(prefix="useful-views-docs-"))
+
+
+def sh(command):
+    """Run a command here and print what it prints, as a terminal would."""
+    done = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    print(done.stdout.rstrip())
+```
+
 [Stale views and fingerprints](../concepts/stale-views.md) explains the two
 fingerprints a view can have: a **file hash** and a **data hash**.
 useful-views records the data hash of every view it makes; the file hash
@@ -16,7 +43,7 @@ Python session or notebook.
 
 ## Two fingerprints
 
-```python
+```{python}
 import hashlib
 
 import polars as pl
@@ -52,7 +79,7 @@ a small example. A real one works a column at a time and is much faster.
 Temperatures from two field sensors. One reading, station B at 06:00, was
 recorded in degrees Fahrenheit by mistake: 56.8 °F is 13.8 °C.
 
-```python
+```{python}
 readings = pl.DataFrame({
     "station": ["A", "A", "B", "B"],
     "time": ["06:00", "07:00", "06:00", "07:00"],
@@ -66,16 +93,12 @@ readings.write_parquet("readings.parquet")
 Save the same table again, this time with pyarrow, as a step written with
 another library would.
 
-```python
+```{python}
 pq.write_table(readings.to_arrow(), "readings_pyarrow.parquet")
 print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_pyarrow.parquet"))
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_pyarrow.parquet"))
 ```
 
-```text
-file hash equal: False
-data hash equal: True
-```
 
 The data is identical, but the bytes are not: each library writes its own
 name into the file, and encodes and compresses the columns its own way. A
@@ -85,16 +108,12 @@ matches.
 
 ## 2. The same library, saved twice
 
-```python
+```{python}
 readings.write_parquet("readings_again.parquet")
 print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_again.parquet"))
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_again.parquet"))
 ```
 
-```text
-file hash equal: True
-data hash equal: True
-```
 
 On one computer, with the same library, the file hash is reliable, and it is
 much cheaper: it needs no understanding of the file at all. That makes it the
@@ -102,7 +121,7 @@ right check for "is this still the file that was recorded?"
 
 ## 3. A real change: fixing the unit error
 
-```python
+```{python}
 fixed = readings.with_columns(
     pl.when((pl.col("station") == "B") & (pl.col("time") == "06:00"))
     .then(((pl.col("temp_c") - 32) * 5 / 9).round(1))
@@ -114,24 +133,17 @@ print("file hash equal:", file_hash("readings.parquet") == file_hash("readings_f
 print("data hash equal:", data_hash("readings.parquet") == data_hash("readings_fixed.parquet"))
 ```
 
-```text
-file hash equal: False
-data hash equal: False
-```
 
 One value changed, and both fingerprints changed. Either one
 would tell useful-views that a view made from the old readings is now stale.
 
 ## 4. The same rows, in another order
 
-```python
+```{python}
 fixed.reverse().write_parquet("readings_reversed.parquet")
 print("data hash equal:", data_hash("readings_fixed.parquet") == data_hash("readings_reversed.parquet"))
 ```
 
-```text
-data hash equal: False
-```
 
 Same rows, other order, different data hash. Many operations return rows in
 an order that can change from one run to the next, such as `group_by` in
@@ -144,7 +156,7 @@ sorts its result before writing it, for example with
 Add the same three numbers in two orders, as a computation split across
 several threads might:
 
-```python
+```{python}
 first = (0.1 + 0.2) + 0.3
 second = 0.1 + (0.2 + 0.3)
 print(first, second)
@@ -153,10 +165,6 @@ pl.DataFrame({"total": [second]}).write_parquet("total_b.parquet")
 print("data hash equal:", data_hash("total_a.parquet") == data_hash("total_b.parquet"))
 ```
 
-```text
-0.6000000000000001 0.6
-data hash equal: False
-```
 
 Shown to a few decimal places, both are 0.6. Fingerprints are exact, so they
 count the difference in the 16th digit. That is honest: the two results are
@@ -170,17 +178,13 @@ The `data_hash` above is a sketch. useful-views has the real one,
 [rules](../reference/data-hash.md), and it reads a large file a column at a
 time:
 
-```python
+```{python}
 import useful_views as uvs
 
 print(uvs.data_hash("readings.parquet"))
 print(uvs.data_hash("readings.parquet") == uvs.data_hash("readings_pyarrow.parquet"))
 ```
 
-```text
-datahash1:sha256:76c92a8bef6fae8ffaffcd6a3558af6146eee1f608168632539e42accdebbc18
-True
-```
 
 Your first line should match this one character for character. The data
 hash depends only on the readings, so it is the same on every computer,

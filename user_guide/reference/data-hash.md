@@ -12,7 +12,7 @@ does not depend on the library that wrote the file, its version, or how the
 file is compressed and encoded. Two parquet files that hold the same table
 have the same data hash. For why this matters, see
 [Stale views and fingerprints](../concepts/stale-views.md) and
-[Try it: two fingerprints](../guides/fingerprints.md).
+[Try it: two fingerprints](../guides/fingerprints.qmd).
 
 `data_hash` computes it for any parquet file:
 
@@ -214,7 +214,7 @@ print(f"{time.perf_counter() - start:.1f} seconds")
 
 ## Test vectors
 
-The sensor readings from [Try it: two fingerprints](../guides/fingerprints.md),
+The sensor readings from [Try it: two fingerprints](../guides/fingerprints.qmd),
 with `station` and `time` as text and `temp_c` as a 64-bit float:
 
 | station | time | temp_c |

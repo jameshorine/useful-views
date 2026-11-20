@@ -143,7 +143,7 @@ the file hash is planned.
 
 The file hash alone is not enough, because a parquet file's bytes depend on
 the library that wrote it, not only on the data. The sensor readings from
-[Try it: two fingerprints](../guides/fingerprints.md), saved once with polars
+[Try it: two fingerprints](../guides/fingerprints.qmd), saved once with polars
 and once with pyarrow (polars 2.0 and pyarrow 26; other versions give other
 file hashes):
 
@@ -162,7 +162,7 @@ never skips a recipe because one stayed the same. After `run` on its own,
 the records show only the readers whose input data changed; `run` names
 the others. To see both for yourself,
 including how row order and the last digit of a number affect them, work
-through [Try it: two fingerprints](../guides/fingerprints.md).
+through [Try it: two fingerprints](../guides/fingerprints.qmd).
 `uvs.data_hash()` computes the data hash of any parquet file, by the
 [data hash rules](../reference/data-hash.md). useful-views already records
 each view's data hash, and those of the views each recipe read, in

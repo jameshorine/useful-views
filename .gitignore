@@ -6,5 +6,7 @@ __pycache__/
 dist/
 build/
 great-docs/
+# Quarto's cache of the docs' executed output; CI re-runs every page instead
+_freeze/
 # Claude Code's local settings and agent worktrees
 .claude/

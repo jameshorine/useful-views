@@ -26,11 +26,14 @@ def test_generated_page_is_up_to_date(name):
 
 
 def test_every_guide_page_is_in_the_sidebar():
-    """great-docs.yml lists the user guide's pages in order; a page left out
-    would be built but never linked."""
+    """great-docs.yml lists the user guide's pages (.md, and .qmd for pages
+    whose code runs at build time) in order; a page left out would be built
+    but never linked."""
     import re
 
     config = (ROOT / "great-docs.yml").read_text(encoding="utf-8")
-    listed = re.findall(r"^\s+- ([\w/.-]+\.md)\s*$", config.split("\nuser_guide:", 1)[1].split("\n\n", 1)[0], re.M)
-    pages = sorted(p.relative_to(ROOT / "user_guide").as_posix() for p in (ROOT / "user_guide").rglob("*.md"))
+    block = config.split("\nuser_guide:", 1)[1].split("\n\n", 1)[0]
+    listed = re.findall(r"^\s+- ([\w/.-]+\.q?md)\s*$", block, re.M)
+    guide = ROOT / "user_guide"
+    pages = sorted(p.relative_to(guide).as_posix() for p in guide.rglob("*") if p.suffix in (".md", ".qmd"))
     assert sorted(listed) == pages and len(listed) == len(set(listed))

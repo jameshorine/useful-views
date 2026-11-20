@@ -122,10 +122,8 @@ def data_hash(path: str | os.PathLike) -> str:
     out in the documentation's "Data hash rules" page:
     https://jameshorine.github.io/useful-views/user-guide/reference/data-hash.html
 
-    For example, `uvs.data_hash("useful-views/gdp-per-capita.parquet")`
-    gives `'datahash1:sha256:69378218…'`. A relative path starts from the
-    current folder; from a notebook in a subfolder of the project, use
-    `uvs.data_hash(uvs.root() / "useful-views/gdp-per-capita.parquet")`.
+    A relative path starts from the current folder. From a notebook in a
+    subfolder of the project, start from `uvs.root()`.
 
     Added in version 0.2.0.
 
@@ -139,6 +137,14 @@ def data_hash(path: str | os.PathLike) -> str:
         DataHashError: The file cannot be read as parquet, or a column holds a
             type the rules do not cover yet, such as a list or a struct in each
             cell.
+
+    Examples:
+        In the pwt example, after `useful-views sync`:
+
+        ```python
+        >>> uvs.data_hash("useful-views/gdp-per-capita.parquet")
+        'datahash1:sha256:69378218dc105ea3cc282fc234f9e6646592d4877692a013eb0cf67305e5cfe1'
+        ```
     """
     return hash_file(path, os.fspath(path))
 
